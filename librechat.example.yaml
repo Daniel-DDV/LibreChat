@@ -366,6 +366,92 @@ endpoints:
       forcePrompt: false
       modelDisplayLabel: 'Portkey'
       iconURL: https://images.crunchbase.com/image/upload/c_pad,f_auto,q_auto:eco,dpr_1/rjqy7ghvjoiu4cd1xjbf
+
+    # EduGPT/GovGPT Proxy Example (v2 default, legacy fallback)
+    # Note: On Linux, map host.docker.internal or replace with your host IP.
+    - name: 'EduGPT-Student v2'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3086/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['edugpt-student']
+        fetch: false
+      titleConvo: true
+      titleModel: 'edugpt-student'
+      modelDisplayLabel: 'EduGPT Student (v2)'
+      iconURL: '/assets/EduGPT.png'
+
+    - name: 'EduGPT-Docent v2'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3086/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['edugpt-docent']
+        fetch: false
+      titleConvo: true
+      titleModel: 'edugpt-docent'
+      modelDisplayLabel: 'EduGPT Docent (v2)'
+      iconURL: '/assets/EduGPT.png'
+
+    - name: 'GovGPT v2'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3086/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['govgpt']
+        fetch: false
+      titleConvo: true
+      titleModel: 'govgpt'
+      modelDisplayLabel: 'GovGPT (v2)'
+      iconURL: '/assets/GovGPT.png'
+
+    - name: 'EduGPT-Student (legacy)'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3082/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['edugpt-student']
+        fetch: false
+      titleConvo: true
+      titleModel: 'edugpt-student'
+      modelDisplayLabel: 'EduGPT Student (legacy)'
+      iconURL: '/assets/EduGPT.png'
+
+    - name: 'EduGPT-Docent (legacy)'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3082/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['edugpt-docent']
+        fetch: false
+      titleConvo: true
+      titleModel: 'edugpt-docent'
+      modelDisplayLabel: 'EduGPT Docent (legacy)'
+      iconURL: '/assets/EduGPT.png'
+
+    - name: 'GovGPT (legacy)'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3082/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['govgpt']
+        fetch: false
+      titleConvo: true
+      titleModel: 'govgpt'
+      modelDisplayLabel: 'GovGPT (legacy)'
+      iconURL: '/assets/GovGPT.png'
 # Example modelSpecs configuration showing grouping options
 # The 'group' field organizes model specs in the UI selector:
 # - If 'group' matches an endpoint name (e.g., "openAI", "groq"), the spec appears nested under that endpoint
@@ -420,6 +506,44 @@ endpoints:
 #         endpoint: "openAI"
 #         model: "gpt-4o-mini"
 
+#     # Example 5: Proxy-backed companions (v2 default, legacy fallback)
+#     - name: "edugpt-student"
+#       label: "EduGPT Student (v2)"
+#       group: "EduGPT"
+#       preset:
+#         endpoint: "EduGPT-Student v2"
+#         model: "edugpt-student"
+#     - name: "edugpt-student-legacy"
+#       label: "EduGPT Student (legacy)"
+#       group: "EduGPT"
+#       preset:
+#         endpoint: "EduGPT-Student (legacy)"
+#         model: "edugpt-student"
+#     - name: "edugpt-docent"
+#       label: "EduGPT Docent (v2)"
+#       group: "EduGPT"
+#       preset:
+#         endpoint: "EduGPT-Docent v2"
+#         model: "edugpt-docent"
+#     - name: "edugpt-docent-legacy"
+#       label: "EduGPT Docent (legacy)"
+#       group: "EduGPT"
+#       preset:
+#         endpoint: "EduGPT-Docent (legacy)"
+#         model: "edugpt-docent"
+#     - name: "govgpt"
+#       label: "GovGPT (v2)"
+#       group: "EduGPT"
+#       preset:
+#         endpoint: "GovGPT v2"
+#         model: "govgpt"
+#     - name: "govgpt-legacy"
+#       label: "GovGPT (legacy)"
+#       group: "EduGPT"
+#       preset:
+#         endpoint: "GovGPT (legacy)"
+#         model: "govgpt"
+#
 # fileConfig:
 #   endpoints:
 #     assistants:

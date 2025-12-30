@@ -74,6 +74,46 @@
 #       - mongodb
 #     restart: always
 
+# # ADD EDUGPT/GOVGPT PROXY V2 (STANDALONE)
+#  proxy-v2:
+#    build: /path/to/librechat-proxy-v2
+#    container_name: librechat-proxy-v2-3086
+#    ports:
+#      - "3086:3081"
+#    environment:
+#      - PORT=3081
+#      - DEBUG=true
+#      - API_KEYS=${PROXY_API_KEY}
+#      - PROXY_API_KEY=${PROXY_API_KEY}
+#      - REDIS_URL=redis://proxy-redis:6379
+#      - DATABASE_URL=postgres://edugpt:edugpt_dev@proxy-postgres:5432/edugpt
+#    env_file:
+#      - /path/to/librechat-proxy-v2/.env
+#    depends_on:
+#      - proxy-redis
+#      - proxy-postgres
+#    restart: unless-stopped
+#
+#  proxy-redis:
+#    image: redis:7-alpine
+#    container_name: librechat-proxy-v2-redis
+#    restart: unless-stopped
+#
+#  proxy-postgres:
+#    image: postgres:15-alpine
+#    container_name: librechat-proxy-v2-postgres
+#    environment:
+#      POSTGRES_USER: edugpt
+#      POSTGRES_PASSWORD: edugpt_dev
+#      POSTGRES_DB: edugpt
+#    volumes:
+#      - /path/to/librechat-proxy-v2/config/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+#      - librechat_proxy_v2_pgdata:/var/lib/postgresql/data
+#    restart: unless-stopped
+#
+# volumes:
+#  librechat_proxy_v2_pgdata:
+
 # # USE MONGODB V4.4.18 - FOR OLDER CPU WITHOUT AVX SUPPORT
 #   mongodb:
 #     image: mongo:4.4.18
