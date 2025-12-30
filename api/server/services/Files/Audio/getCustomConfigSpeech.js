@@ -32,6 +32,11 @@ async function getCustomConfigSpeech(req, res) {
       ttsExternal,
     };
 
+    // If no TTS schema is configured, disable TTS in UI defaults.
+    if (!ttsExternal) {
+      settings.textToSpeech = false;
+    }
+
     if (!appConfig.speech?.speechTab) {
       return res.status(200).send(settings);
     }
