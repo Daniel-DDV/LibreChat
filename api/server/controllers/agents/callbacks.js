@@ -1,5 +1,5 @@
 const { nanoid } = require('nanoid');
-const { sendEvent, sendStatusEvent } = require('@librechat/api');
+const { sendEvent, sendStatusEvent, GenerationJobManager } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { Tools, StepTypes, FileContext, ErrorTypes } = require('librechat-data-provider');
 const {
@@ -24,12 +24,12 @@ const TOOL_STATUS_KEYS = {
   [Tools.retrieval]: 'com_assistants_retrieval',
 };
 
-function sendToolStatus(res, toolName, phase) {
+function sendToolStatus(res, streamId, toolName, phase) {
   const statusKey = TOOL_STATUS_KEYS[toolName];
   if (!statusKey) {
     return;
   }
-  sendStatusEvent(res, {
+  emitStatusEvent(res, streamId, {
     key: statusKey,
     tool: toolName,
     phase,
@@ -166,16 +166,51 @@ function checkIfLastAgent(last_agent_id, langgraph_node) {
 }
 
 /**
+ * Helper to emit events either to res (standard mode) or to job emitter (resumable mode).
+ * @param {ServerResponse} res - The server response object
+ * @param {string | null} streamId - The stream ID for resumable mode, or null for standard mode
+ * @param {Object} eventData - The event data to send
+ */
+function emitEvent(res, streamId, eventData) {
+  if (streamId) {
+    GenerationJobManager.emitChunk(streamId, eventData);
+  } else {
+    sendEvent(res, eventData);
+  }
+}
+
+/**
+ * Helper to emit status events either to res (standard mode) or to job emitter (resumable mode).
+ * @param {ServerResponse} res - The server response object
+ * @param {string | null} streamId - The stream ID for resumable mode, or null for standard mode
+ * @param {Object} data - The status payload
+ */
+function emitStatusEvent(res, streamId, data) {
+  if (streamId) {
+    GenerationJobManager.emitChunk(streamId, { event: 'status', data });
+  } else {
+    sendStatusEvent(res, data);
+  }
+}
+
+/**
  * Get default handlers for stream events.
  * @param {Object} options - The options object.
- * @param {ServerResponse} options.res - The options object.
- * @param {ContentAggregator} options.aggregateContent - The options object.
+ * @param {ServerResponse} options.res - The server response object.
+ * @param {ContentAggregator} options.aggregateContent - Content aggregator function.
  * @param {ToolEndCallback} options.toolEndCallback - Callback to use when tool ends.
  * @param {Array<UsageMetadata>} options.collectedUsage - The list of collected usage metadata.
+ * @param {string | null} [options.streamId] - The stream ID for resumable mode, or null for standard mode.
  * @returns {Record<string, t.EventHandler>} The default handlers.
  * @throws {Error} If the request is not found.
  */
-function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedUsage }) {
+function getDefaultHandlers({
+  res,
+  aggregateContent,
+  toolEndCallback,
+  collectedUsage,
+  streamId = null,
+}) {
   if (!res || !aggregateContent) {
     throw new Error(
       `[getDefaultHandlers] Missing required options: res: ${!res}, aggregateContent: ${!aggregateContent}`,
@@ -196,18 +231,18 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
         if (data?.stepDetails.type === StepTypes.TOOL_CALLS) {
           const toolName = data?.stepDetails?.tool_calls?.[0]?.name;
           if (toolName) {
-            sendToolStatus(res, toolName, 'tool_start');
+            sendToolStatus(res, streamId, toolName, 'tool_start');
           }
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else if (!metadata?.hide_sequential_outputs) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else {
           const agentName = metadata?.name ?? 'Agent';
           const isToolCall = data?.stepDetails.type === StepTypes.TOOL_CALLS;
           const action = isToolCall ? 'performing a task...' : 'thinking...';
-          sendEvent(res, {
+          emitEvent(res, streamId, {
             event: 'on_agent_update',
             data: {
               runId: metadata?.run_id,
@@ -227,11 +262,11 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
        */
       handle: (event, data, metadata) => {
         if (data?.delta.type === StepTypes.TOOL_CALLS) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else if (!metadata?.hide_sequential_outputs) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         }
         aggregateContent({ event, data });
       },
@@ -247,17 +282,17 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
         if (data?.result != null) {
           const toolName = data?.result?.tool_call?.name;
           if (toolName) {
-            sendStatusEvent(res, {
+            emitStatusEvent(res, streamId, {
               key: 'com_ui_generating',
               phase: 'post_tool',
-              priority: 0,
+              priority: 1,
             });
           }
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else if (!metadata?.hide_sequential_outputs) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         }
         aggregateContent({ event, data });
       },
@@ -271,9 +306,9 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
        */
       handle: (event, data, metadata) => {
         if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else if (!metadata?.hide_sequential_outputs) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         }
         aggregateContent({ event, data });
       },
@@ -287,9 +322,9 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
        */
       handle: (event, data, metadata) => {
         if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         } else if (!metadata?.hide_sequential_outputs) {
-          sendEvent(res, { event, data });
+          emitEvent(res, streamId, { event, data });
         }
         aggregateContent({ event, data });
       },
@@ -300,14 +335,29 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
 }
 
 /**
+ * Helper to write attachment events either to res or to job emitter.
+ * @param {ServerResponse} res - The server response object
+ * @param {string | null} streamId - The stream ID for resumable mode, or null for standard mode
+ * @param {Object} attachment - The attachment data
+ */
+function writeAttachment(res, streamId, attachment) {
+  if (streamId) {
+    GenerationJobManager.emitChunk(streamId, { event: 'attachment', data: attachment });
+  } else {
+    res.write(`event: attachment\ndata: ${JSON.stringify(attachment)}\n\n`);
+  }
+}
+
+/**
  *
  * @param {Object} params
  * @param {ServerRequest} params.req
  * @param {ServerResponse} params.res
  * @param {Promise<MongoFile | { filename: string; filepath: string; expires: number;} | null>[]} params.artifactPromises
+ * @param {string | null} [params.streamId] - The stream ID for resumable mode, or null for standard mode.
  * @returns {ToolEndCallback} The tool end callback.
  */
-function createToolEndCallback({ req, res, artifactPromises }) {
+function createToolEndCallback({ req, res, artifactPromises, streamId = null }) {
   /**
    * @type {ToolEndCallback}
    */
@@ -335,10 +385,10 @@ function createToolEndCallback({ req, res, artifactPromises }) {
           if (!attachment) {
             return null;
           }
-          if (!res.headersSent) {
+          if (!streamId && !res.headersSent) {
             return attachment;
           }
-          res.write(`event: attachment\ndata: ${JSON.stringify(attachment)}\n\n`);
+          writeAttachment(res, streamId, attachment);
           return attachment;
         })().catch((error) => {
           logger.error('Error processing file citations:', error);
@@ -347,8 +397,6 @@ function createToolEndCallback({ req, res, artifactPromises }) {
       );
     }
 
-    // TODO: a lot of duplicated code in createToolEndCallback
-    // we should refactor this to use a helper function in a follow-up PR
     if (output.artifact[Tools.ui_resources]) {
       artifactPromises.push(
         (async () => {
@@ -359,10 +407,10 @@ function createToolEndCallback({ req, res, artifactPromises }) {
             conversationId: metadata.thread_id,
             [Tools.ui_resources]: output.artifact[Tools.ui_resources].data,
           };
-          if (!res.headersSent) {
+          if (!streamId && !res.headersSent) {
             return attachment;
           }
-          res.write(`event: attachment\ndata: ${JSON.stringify(attachment)}\n\n`);
+          writeAttachment(res, streamId, attachment);
           return attachment;
         })().catch((error) => {
           logger.error('Error processing artifact content:', error);
@@ -381,10 +429,10 @@ function createToolEndCallback({ req, res, artifactPromises }) {
             conversationId: metadata.thread_id,
             [Tools.web_search]: { ...output.artifact[Tools.web_search] },
           };
-          if (!res.headersSent) {
+          if (!streamId && !res.headersSent) {
             return attachment;
           }
-          res.write(`event: attachment\ndata: ${JSON.stringify(attachment)}\n\n`);
+          writeAttachment(res, streamId, attachment);
           return attachment;
         })().catch((error) => {
           logger.error('Error processing artifact content:', error);
@@ -421,7 +469,7 @@ function createToolEndCallback({ req, res, artifactPromises }) {
               toolCallId: output.tool_call_id,
               conversationId: metadata.thread_id,
             });
-            if (!res.headersSent) {
+            if (!streamId && !res.headersSent) {
               return fileMetadata;
             }
 
@@ -429,7 +477,7 @@ function createToolEndCallback({ req, res, artifactPromises }) {
               return null;
             }
 
-            res.write(`event: attachment\ndata: ${JSON.stringify(fileMetadata)}\n\n`);
+            writeAttachment(res, streamId, fileMetadata);
             return fileMetadata;
           })().catch((error) => {
             logger.error('Error processing artifact content:', error);
@@ -468,7 +516,7 @@ function createToolEndCallback({ req, res, artifactPromises }) {
             conversationId: metadata.thread_id,
             session_id: output.artifact.session_id,
           });
-          if (!res.headersSent) {
+          if (!streamId && !res.headersSent) {
             return fileMetadata;
           }
 
@@ -476,7 +524,7 @@ function createToolEndCallback({ req, res, artifactPromises }) {
             return null;
           }
 
-          res.write(`event: attachment\ndata: ${JSON.stringify(fileMetadata)}\n\n`);
+          writeAttachment(res, streamId, fileMetadata);
           return fileMetadata;
         })().catch((error) => {
           logger.error('Error processing code output:', error);

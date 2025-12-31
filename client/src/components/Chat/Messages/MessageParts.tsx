@@ -4,7 +4,7 @@ import { useRecoilValue } from 'recoil';
 import { getConfigDefaults } from 'librechat-data-provider';
 import type { TMessageContentParts } from 'librechat-data-provider';
 import type { TMessageProps, TMessageIcon } from '~/common';
-import { useMessageHelpers, useLocalize, useAttachments } from '~/hooks';
+import { useMessageHelpers, useLocalize, useAttachments, useContentMetadata } from '~/hooks';
 import { useGetStartupConfig } from '~/data-provider';
 import MessageIcon from '~/components/Chat/Messages/MessageIcon';
 import ContentParts from './Content/ContentParts';
@@ -86,15 +86,25 @@ export default function Message(props: TMessageProps) {
     ],
   );
 
+  const { hasParallelContent } = useContentMetadata(message);
+
   if (!message) {
     return null;
   }
 
+  const getChatWidthClass = () => {
+    if (maximizeChatSpace) {
+      return 'w-full max-w-full md:px-5 lg:px-1 xl:px-5';
+    }
+    if (hasParallelContent) {
+      return 'md:max-w-[58rem] xl:max-w-[70rem]';
+    }
+    return 'md:max-w-[47rem] xl:max-w-[55rem]';
+  };
+
   const baseClasses = {
     common: 'group mx-auto flex flex-1 gap-3 transition-all duration-300 transform-gpu',
-    chat: maximizeChatSpace
-      ? 'w-full max-w-full md:px-5 lg:px-1 xl:px-5'
-      : 'md:max-w-[47rem] xl:max-w-[55rem]',
+    chat: getChatWidthClass(),
   };
 
   return (
@@ -110,20 +120,25 @@ export default function Message(props: TMessageProps) {
             aria-label={getMessageAriaLabel(message, localize)}
             className={cn(baseClasses.common, baseClasses.chat, 'message-render')}
           >
-            <div className="relative flex flex-shrink-0 flex-col items-center">
-              <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full pt-0.5">
-                <MessageIcon iconData={iconData} assistant={assistant} agent={agent} />
+            {!hasParallelContent && (
+              <div className="relative flex flex-shrink-0 flex-col items-center">
+                <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full pt-0.5">
+                  <MessageIcon iconData={iconData} assistant={assistant} agent={agent} />
+                </div>
               </div>
-            </div>
+            )}
             <div
               className={cn(
-                'relative flex w-11/12 flex-col',
+                'relative flex flex-col',
+                hasParallelContent ? 'w-full' : 'w-11/12',
                 isCreatedByUser ? 'user-turn' : 'agent-turn',
               )}
             >
-              <h2 className={cn('select-none font-semibold text-text-primary', fontSize)}>
-                {name}
-              </h2>
+              {!hasParallelContent && (
+                <h2 className={cn('select-none font-semibold text-text-primary', fontSize)}>
+                  {name}
+                </h2>
+              )}
               <div className="flex flex-col gap-1">
                 <div className="flex max-w-full flex-grow flex-col gap-0">
                   <ContentParts
@@ -142,8 +157,12 @@ export default function Message(props: TMessageProps) {
                     content={message.content as Array<TMessageContentParts | undefined>}
                   />
                 </div>
-                {isLast && isSubmitting && !isCreatedByUser && showStatusLine ? (
-                  <StatusLine message={message} isSubmitting={isSubmitting} index={index} />
+                {isLast && isSubmitting && !isCreatedByUser ? (
+                  showStatusLine ? (
+                    <StatusLine message={message} isSubmitting={isSubmitting} index={index} />
+                  ) : (
+                    <div className="mt-1 h-[27px] bg-transparent" />
+                  )
                 ) : (
                   <SubRow classes="text-xs">
                     <SiblingSwitch

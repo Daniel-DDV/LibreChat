@@ -476,7 +476,7 @@ export default function AgentPanel() {
     <FormProvider {...methods}>
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="scrollbar-gutter-stable h-auto w-full flex-shrink-0 overflow-x-visible"
+        className="scrollbar-gutter-stable h-auto w-full flex-shrink-0 overflow-y-hidden overflow-x-visible"
         aria-label="Agent configuration form"
       >
         <div className="mx-1 mt-2 flex w-full flex-wrap gap-2">
@@ -487,7 +487,7 @@ export default function AgentPanel() {
               setCurrentAgentId={setCurrentAgentId}
               // The following is required to force re-render the component when the form's agent ID changes
               // Also maintains ComboBox Focus for Accessibility
-              selectedAgentId={agentQuery.isInitialLoading ? null : (current_agent_id ?? null)}
+              selectedAgentId={agentQuery.isInitialLoading ? null : current_agent_id ?? null}
             />
           </div>
           {/* Create + Select Button */}

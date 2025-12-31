@@ -66,6 +66,8 @@ export const messages = (params: q.MessagesListParams) => {
 
 export const messagesArtifacts = (messageId: string) => `${messagesRoot}/artifact/${messageId}`;
 
+export const messagesBranch = () => `${messagesRoot}/branch`;
+
 const shareRoot = `${BASE_URL}/api/share`;
 export const shareMessages = (shareId: string) => `${shareRoot}/${shareId}`;
 export const getSharedLink = (conversationId: string) => `${shareRoot}/link/${conversationId}`;
@@ -101,7 +103,8 @@ export const conversations = (params: q.ConversationListParams) => {
 
 export const conversationById = (id: string) => `${conversationsRoot}/${id}`;
 
-export const genTitle = () => `${conversationsRoot}/gen_title`;
+export const genTitle = (conversationId: string) =>
+  `${conversationsRoot}/gen_title/${encodeURIComponent(conversationId)}`;
 
 export const updateConversation = () => `${conversationsRoot}/update`;
 
@@ -226,6 +229,8 @@ export const agents = ({ path = '', options }: { path?: string; options?: object
   return url;
 };
 
+export const activeJobs = () => `${BASE_URL}/api/agents/chat/active`;
+
 export const mcp = {
   tools: `${BASE_URL}/api/mcp/tools`,
   servers: `${BASE_URL}/api/mcp/servers`,
@@ -264,15 +269,12 @@ export const getPromptGroup = (_id: string) => `${prompts()}/groups/${_id}`;
 export const getPromptGroupsWithFilters = (filter: object) => {
   let url = `${prompts()}/groups`;
   // Filter out undefined/null values
-  const cleanedFilter = Object.entries(filter).reduce(
-    (acc, [key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        acc[key] = value;
-      }
-      return acc;
-    },
-    {} as Record<string, string>,
-  );
+  const cleanedFilter = Object.entries(filter).reduce((acc, [key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      acc[key] = value;
+    }
+    return acc;
+  }, {} as Record<string, string>);
 
   if (Object.keys(cleanedFilter).length > 0) {
     const queryParams = new URLSearchParams(cleanedFilter).toString();

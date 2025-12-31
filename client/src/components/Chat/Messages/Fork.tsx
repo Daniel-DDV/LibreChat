@@ -227,7 +227,7 @@ export default function Fork({
   });
 
   const buttonStyle = cn(
-    'hover-button rounded-lg p-1.5 text-text-secondary-alt transition-colors duration-200',
+    'hover-button rounded-lg p-1.5 text-text-secondary-alt',
     'hover:text-text-primary hover:bg-surface-hover',
     'md:group-hover:visible md:group-focus-within:visible md:group-[.final-completion]:visible',
     !isLast && 'md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
@@ -317,7 +317,9 @@ export default function Fork({
       hoverTitle: (
         <>
           <ListTree className="h-5 w-5" aria-hidden="true" />
-          {`${localize(optionLabels[ForkOptions.TARGET_LEVEL])} (${localize('com_endpoint_default')})`}
+          {`${localize(optionLabels[ForkOptions.TARGET_LEVEL])} (${localize(
+            'com_endpoint_default',
+          )})`}
         </>
       ),
       hoverDescription: localize('com_ui_fork_info_target'),
@@ -356,7 +358,9 @@ export default function Fork({
       <Ariakit.Popover
         store={popoverStore}
         gutter={10}
-        className={`popover-animate ${isActive ? 'open' : ''} flex w-60 flex-col gap-3 overflow-hidden rounded-2xl border border-border-medium bg-surface-secondary p-2 px-4 shadow-lg`}
+        className={`popover-animate ${
+          isActive ? 'open' : ''
+        } flex w-60 flex-col gap-3 overflow-hidden rounded-2xl border border-border-medium bg-surface-secondary p-2 px-4 shadow-lg`}
         style={{
           outline: 'none',
           pointerEvents: 'auto',

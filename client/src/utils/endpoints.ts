@@ -6,6 +6,7 @@ import {
   LocalStorageKeys,
   getEndpointField,
   isAgentsEndpoint,
+  isEphemeralAgentId,
   isAssistantsEndpoint,
 } from 'librechat-data-provider';
 import type * as t from 'librechat-data-provider';
@@ -26,7 +27,7 @@ export function clearModelForNonEphemeralAgent<
   if (
     isAgentsEndpoint(template.endpoint) &&
     template.agent_id &&
-    template.agent_id !== Constants.EPHEMERAL_AGENT_ID
+    !isEphemeralAgentId(template.agent_id)
   ) {
     template.model = undefined as T['model'];
   }
@@ -150,7 +151,7 @@ export function getConvoSwitchLogic(params: ConversationInitParams): InitiatedTe
   if (
     !isAgentsEndpoint(newEndpoint) &&
     template.agent_id &&
-    template.agent_id !== Constants.EPHEMERAL_AGENT_ID
+    !isEphemeralAgentId(template.agent_id)
   ) {
     template.agent_id = Constants.EPHEMERAL_AGENT_ID;
   }
@@ -291,7 +292,7 @@ export function getIconEndpoint({
   iconURL?: string | null;
   endpoint?: string | null;
 }) {
-  return (endpointsConfig?.[iconURL ?? ''] ? (iconURL ?? endpoint) : endpoint) ?? '';
+  return (endpointsConfig?.[iconURL ?? ''] ? iconURL ?? endpoint : endpoint) ?? '';
 }
 
 /** Gets the key to use for the default endpoint iconURL, as defined by the custom config */
@@ -311,7 +312,7 @@ export function getIconKey({
   if (endpointIconURL && EModelEndpoint[endpointIconURL] != null) {
     return endpointIconURL;
   }
-  return endpointType ? 'unknown' : (endpoint ?? 'unknown');
+  return endpointType ? 'unknown' : endpoint ?? 'unknown';
 }
 
 export const getEntity = ({

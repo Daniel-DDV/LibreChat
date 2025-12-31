@@ -7,7 +7,13 @@ import { Constants, buildTree } from 'librechat-data-provider';
 import type { TMessage } from 'librechat-data-provider';
 import type { ChatFormValues } from '~/common';
 import { ChatContext, AddedChatContext, useFileMapContext, ChatFormProvider } from '~/Providers';
-import { useChatHelpers, useAddedResponse, useSSE } from '~/hooks';
+import {
+  useResumableStreamToggle,
+  useAddedResponse,
+  useResumeOnLoad,
+  useAdaptiveSSE,
+  useChatHelpers,
+} from '~/hooks';
 import ConversationStarters from './Input/ConversationStarters';
 import { useGetMessagesByConvoId } from '~/data-provider';
 import MessagesView from './Messages/MessagesView';
@@ -32,7 +38,6 @@ function LoadingSpinner() {
 function ChatView({ index = 0 }: { index?: number }) {
   const { conversationId } = useParams();
   const rootSubmission = useRecoilValue(store.submissionByIndex(index));
-  const addedSubmission = useRecoilValue(store.submissionByIndex(index + 1));
   const centerFormOnLanding = useRecoilValue(store.centerFormOnLanding);
 
   const fileMap = useFileMapContext();
@@ -41,7 +46,7 @@ function ChatView({ index = 0 }: { index?: number }) {
     select: useCallback(
       (data: TMessage[]) => {
         const dataTree = buildTree({ messages: data, fileMap });
-        return dataTree?.length === 0 ? null : (dataTree ?? null);
+        return dataTree?.length === 0 ? null : dataTree ?? null;
       },
       [fileMap],
     ),
@@ -49,10 +54,18 @@ function ChatView({ index = 0 }: { index?: number }) {
   });
 
   const chatHelpers = useChatHelpers(index, conversationId);
-  const addedChatHelpers = useAddedResponse({ rootIndex: index });
+  const addedChatHelpers = useAddedResponse();
 
-  useSSE(rootSubmission, chatHelpers, false, index);
-  useSSE(addedSubmission, addedChatHelpers, true, index + 1);
+  useResumableStreamToggle(
+    chatHelpers.conversation?.endpoint,
+    chatHelpers.conversation?.endpointType,
+  );
+
+  useAdaptiveSSE(rootSubmission, chatHelpers, false, index);
+
+  // Auto-resume if navigating back to conversation with active job
+  // Wait for messages to load before resuming to avoid race condition
+  useResumeOnLoad(conversationId, chatHelpers.getMessages, index, !isLoading);
 
   const methods = useForm<ChatFormValues>({
     defaultValues: { text: '' },
@@ -79,7 +92,7 @@ function ChatView({ index = 0 }: { index?: number }) {
       <ChatContext.Provider value={chatHelpers}>
         <AddedChatContext.Provider value={addedChatHelpers}>
           <Presentation>
-            <div className="flex h-full w-full flex-col">
+            <div className="relative flex h-full w-full flex-col">
               {!isLoading && <Header />}
               <>
                 <div
