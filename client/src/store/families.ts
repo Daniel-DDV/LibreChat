@@ -22,6 +22,16 @@ import {
 } from '~/utils';
 import { useSetConvoContext } from '~/Providers/SetConvoContext';
 
+export type StatusLineState = {
+  key?: string;
+  text?: string;
+  tool?: string;
+  phase?: string;
+  priority?: number;
+  source?: string;
+  updatedAt: number;
+};
+
 const latestMessageKeysAtom = atom<(string | number)[]>({
   key: 'latestMessageKeys',
   default: [],
@@ -198,6 +208,11 @@ const isSubmittingFamily = atomFamily({
   ],
 });
 
+const statusLineByIndex = atomFamily<StatusLineState | null, string | number>({
+  key: 'statusLineByIndex',
+  default: null,
+});
+
 const anySubmittingSelector = selector<boolean>({
   key: 'anySubmittingSelector',
   get: ({ get }) => {
@@ -333,6 +348,7 @@ function useClearSubmissionState() {
 
           logger.log('resetting submission', key);
           reset(submissionByIndex(key));
+          reset(statusLineByIndex(key));
         }
 
         set(submissionKeysSelector, []);
@@ -405,6 +421,7 @@ export default {
   showStopButtonByIndex,
   abortScrollFamily,
   isSubmittingFamily,
+  statusLineByIndex,
   optionSettingsFamily,
   showPopoverFamily,
   latestMessageFamily,

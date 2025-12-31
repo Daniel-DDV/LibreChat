@@ -15,6 +15,7 @@ import isTemporary from './temporary';
 export * from './agents';
 export * from './mcp';
 export * from './favorites';
+export type { StatusLineState } from './families';
 
 export default {
   ...artifacts,

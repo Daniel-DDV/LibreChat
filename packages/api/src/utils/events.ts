@@ -1,6 +1,13 @@
 import type { Response as ServerResponse } from 'express';
 import type { ServerSentEvent } from '~/types';
 
+function sendNamedEvent(res: ServerResponse, name: string, data: ServerSentEvent['data']): void {
+  if (typeof data === 'string' && data.length === 0) {
+    return;
+  }
+  res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
 /**
  * Sends message data in Server Sent Events format.
  * @param res - The server response.
@@ -9,10 +16,16 @@ import type { ServerSentEvent } from '~/types';
  * @param event.data - The message to be sent.
  */
 export function sendEvent(res: ServerResponse, event: ServerSentEvent): void {
-  if (typeof event.data === 'string' && event.data.length === 0) {
-    return;
-  }
-  res.write(`event: message\ndata: ${JSON.stringify(event)}\n\n`);
+  sendNamedEvent(res, 'message', event);
+}
+
+/**
+ * Sends status data in Server Sent Events format.
+ * @param res - The server response.
+ * @param data - The status payload.
+ */
+export function sendStatusEvent(res: ServerResponse, data: ServerSentEvent['data']): void {
+  sendNamedEvent(res, 'status', data);
 }
 
 /**

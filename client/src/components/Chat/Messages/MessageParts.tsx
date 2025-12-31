@@ -143,7 +143,7 @@ export default function Message(props: TMessageProps) {
                   />
                 </div>
                 {isLast && isSubmitting && !isCreatedByUser && showStatusLine ? (
-                  <StatusLine message={message} isSubmitting={isSubmitting} />
+                  <StatusLine message={message} isSubmitting={isSubmitting} index={index} />
                 ) : (
                   <SubRow classes="text-xs">
                     <SiblingSwitch

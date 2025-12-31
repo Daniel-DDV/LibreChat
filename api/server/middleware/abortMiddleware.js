@@ -1,5 +1,11 @@
 const { logger } = require('@librechat/data-schemas');
-const { countTokens, isEnabled, sendEvent, sanitizeMessageForTransmit } = require('@librechat/api');
+const {
+  countTokens,
+  isEnabled,
+  sendEvent,
+  sendStatusEvent,
+  sanitizeMessageForTransmit,
+} = require('@librechat/api');
 const { isAssistantsEndpoint, ErrorTypes, Constants } = require('librechat-data-provider');
 const { truncateText, smartTruncateText } = require('~/app/clients/prompts');
 const clearPendingReq = require('~/cache/clearPendingReq');
@@ -194,6 +200,13 @@ const createAbortController = (req, res, getAbortData, getReqData) => {
    */
   const onStart = (userMessage, responseMessageId, isNewConvo) => {
     sendEvent(res, { message: userMessage, created: true });
+    sendStatusEvent(res, {
+      key: 'com_ui_generating',
+      phase: 'start',
+      priority: 0,
+      messageId: responseMessageId,
+      conversationId: userMessage?.conversationId,
+    });
 
     const prelimAbortKey = userMessage?.conversationId ?? req.user.id;
     const abortKey = isNewConvo

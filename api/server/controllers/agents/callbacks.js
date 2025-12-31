@@ -1,5 +1,5 @@
 const { nanoid } = require('nanoid');
-const { sendEvent } = require('@librechat/api');
+const { sendEvent, sendStatusEvent } = require('@librechat/api');
 const { logger } = require('@librechat/data-schemas');
 const { Tools, StepTypes, FileContext, ErrorTypes } = require('librechat-data-provider');
 const {
@@ -15,6 +15,27 @@ const { processFileCitations } = require('~/server/services/Files/Citations');
 const { processCodeOutput } = require('~/server/services/Files/Code/process');
 const { loadAuthValues } = require('~/server/services/Tools/credentials');
 const { saveBase64Image } = require('~/server/services/Files/process');
+
+const TOOL_STATUS_KEYS = {
+  [Tools.web_search]: 'com_ui_web_searching',
+  [Tools.execute_code]: 'com_assistants_code_interpreter',
+  [Tools.code_interpreter]: 'com_assistants_code_interpreter',
+  [Tools.file_search]: 'com_assistants_file_search',
+  [Tools.retrieval]: 'com_assistants_retrieval',
+};
+
+function sendToolStatus(res, toolName, phase) {
+  const statusKey = TOOL_STATUS_KEYS[toolName];
+  if (!statusKey) {
+    return;
+  }
+  sendStatusEvent(res, {
+    key: statusKey,
+    tool: toolName,
+    phase,
+    priority: 1,
+  });
+}
 
 class ModelEndHandler {
   /**
@@ -173,6 +194,10 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
        */
       handle: (event, data, metadata) => {
         if (data?.stepDetails.type === StepTypes.TOOL_CALLS) {
+          const toolName = data?.stepDetails?.tool_calls?.[0]?.name;
+          if (toolName) {
+            sendToolStatus(res, toolName, 'tool_start');
+          }
           sendEvent(res, { event, data });
         } else if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
           sendEvent(res, { event, data });
@@ -220,6 +245,14 @@ function getDefaultHandlers({ res, aggregateContent, toolEndCallback, collectedU
        */
       handle: (event, data, metadata) => {
         if (data?.result != null) {
+          const toolName = data?.result?.tool_call?.name;
+          if (toolName) {
+            sendStatusEvent(res, {
+              key: 'com_ui_generating',
+              phase: 'post_tool',
+              priority: 0,
+            });
+          }
           sendEvent(res, { event, data });
         } else if (checkIfLastAgent(metadata?.last_agent_id, metadata?.langgraph_node)) {
           sendEvent(res, { event, data });

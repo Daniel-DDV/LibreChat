@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { v4 } from 'uuid';
 import { SSE } from 'sse.js';
 import { useSetRecoilState } from 'recoil';
@@ -16,7 +16,7 @@ import type { TResData } from '~/common';
 import { useGenTitleMutation, useGetStartupConfig, useGetUserBalance } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
 import useEventHandlers from './useEventHandlers';
-import store from '~/store';
+import store, { type StatusLineState } from '~/store';
 
 const clearDraft = (conversationId?: string | null) => {
   if (conversationId) {
@@ -46,6 +46,7 @@ export default function useSSE(
 ) {
   const genTitle = useGenTitleMutation();
   const setActiveRunId = useSetRecoilState(store.activeRunFamily(runIndex));
+  const setStatusLine = useSetRecoilState(store.statusLineByIndex(runIndex));
 
   const { token, isAuthenticated } = useAuthContext();
   const [completed, setCompleted] = useState(new Set());
@@ -90,6 +91,23 @@ export default function useSSE(
     enabled: !!isAuthenticated && startupConfig?.balance?.enabled,
   });
 
+  const applyStatusLine = useCallback(
+    (nextStatus: StatusLineState) => {
+      setStatusLine((prev) => {
+        if (!prev) {
+          return nextStatus;
+        }
+        const prevPriority = prev.priority ?? 0;
+        const nextPriority = nextStatus.priority ?? 0;
+        if (prevPriority > nextPriority) {
+          return prev;
+        }
+        return nextStatus;
+      });
+    },
+    [setStatusLine],
+  );
+
   useEffect(() => {
     if (submission == null || Object.keys(submission).length === 0) {
       return;
@@ -122,6 +140,7 @@ export default function useSSE(
       const data = JSON.parse(e.data);
 
       if (data.final != null) {
+        setStatusLine(null);
         clearDraft(submission.conversation?.conversationId);
         try {
           finalHandler(data, submission as EventSubmission);
@@ -172,12 +191,48 @@ export default function useSSE(
       }
     });
 
+    sse.addEventListener('status', (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as Record<string, unknown>;
+        if (data?.clear === true) {
+          setStatusLine(null);
+          return;
+        }
+        const payload =
+          data?.status && typeof data.status === 'object'
+            ? (data.status as Record<string, unknown>)
+            : data;
+
+        const nextStatus: StatusLineState = {
+          key: typeof payload.key === 'string' ? payload.key : undefined,
+          text: typeof payload.text === 'string' ? payload.text : undefined,
+          tool: typeof payload.tool === 'string' ? payload.tool : undefined,
+          phase: typeof payload.phase === 'string' ? payload.phase : undefined,
+          priority: typeof payload.priority === 'number' ? payload.priority : 1,
+          source: typeof payload.source === 'string' ? payload.source : 'server',
+          updatedAt: Date.now(),
+        };
+
+        applyStatusLine(nextStatus);
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
     sse.addEventListener('open', () => {
       setAbortScroll(false);
+      applyStatusLine({
+        key: 'com_ui_generating',
+        phase: 'start',
+        priority: 0,
+        source: 'system',
+        updatedAt: Date.now(),
+      });
       console.log('connection is opened');
     });
 
     sse.addEventListener('cancel', async () => {
+      setStatusLine(null);
       const streamKey = (submission as TSubmission | null)?.['initialResponse']?.messageId;
       if (completed.has(streamKey)) {
         setIsSubmitting(false);
@@ -208,6 +263,7 @@ export default function useSSE(
     });
 
     sse.addEventListener('error', async (e: MessageEvent) => {
+      setStatusLine(null);
       /* @ts-ignore */
       if (e.responseCode === 401) {
         /* token expired, refresh and retry */

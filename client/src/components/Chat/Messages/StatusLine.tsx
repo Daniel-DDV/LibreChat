@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRecoilValue } from 'recoil';
 import {
   ContentTypes,
   ToolCallTypes,
@@ -7,10 +8,12 @@ import {
   type TMessage,
 } from 'librechat-data-provider';
 import { useLocalize } from '~/hooks';
+import store from '~/store';
 
 type StatusLineProps = {
   message: TMessage;
   isSubmitting: boolean;
+  index: number;
 };
 
 function formatDuration(totalSeconds: number) {
@@ -20,12 +23,45 @@ function formatDuration(totalSeconds: number) {
   return `${minutes}m ${paddedSeconds}s`;
 }
 
-export default function StatusLine({ message, isSubmitting }: StatusLineProps) {
+export default function StatusLine({ message, isSubmitting, index }: StatusLineProps) {
   const localize = useLocalize();
   const startRef = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const statusLine = useRecoilValue(store.statusLineByIndex(index));
+
+  const toolStatusText = useMemo(() => {
+    const toolName = statusLine?.tool;
+    if (!toolName) {
+      return null;
+    }
+    if (toolName === Tools.web_search) {
+      return localize('com_ui_web_searching');
+    }
+    if (toolName === Tools.execute_code || toolName === Tools.code_interpreter) {
+      return localize('com_assistants_code_interpreter');
+    }
+    if (toolName === Tools.file_search || toolName === ToolCallTypes.FILE_SEARCH) {
+      return localize('com_assistants_file_search');
+    }
+    if (toolName === Tools.retrieval || toolName === ToolCallTypes.RETRIEVAL) {
+      return localize('com_assistants_retrieval');
+    }
+    return null;
+  }, [localize, statusLine?.tool]);
 
   const statusText = useMemo(() => {
+    if (statusLine?.key) {
+      return localize(statusLine.key);
+    }
+
+    if (toolStatusText) {
+      return toolStatusText;
+    }
+
+    if (statusLine?.text) {
+      return statusLine.text;
+    }
+
     const parts: TMessageContentParts[] = Array.isArray(message?.content)
       ? (message.content as TMessageContentParts[])
       : [];
@@ -56,7 +92,7 @@ export default function StatusLine({ message, isSubmitting }: StatusLineProps) {
     }
 
     return localize('com_ui_generating');
-  }, [message, localize]);
+  }, [message, localize, statusLine?.key, statusLine?.text, toolStatusText]);
 
   useEffect(() => {
     if (isSubmitting && startRef.current == null) {
