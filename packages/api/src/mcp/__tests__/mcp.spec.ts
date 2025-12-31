@@ -814,7 +814,7 @@ describe('Environment Variable Extraction (MCP)', () => {
     it('should process GitHub MCP server configuration with PAT_TOKEN placeholder', () => {
       const user = createTestUser({ id: 'github-user-123', email: 'user@example.com' });
       const customUserVars = {
-        PAT_TOKEN: 'ghp_1234567890abcdef1234567890abcdef12345678', // GitHub Personal Access Token
+        PAT_TOKEN: 'GITHUB_TOKEN_TEST', // Non-secret placeholder for tests
       };
 
       // Simulate the GitHub MCP server configuration from librechat.yaml
@@ -831,7 +831,7 @@ describe('Environment Variable Extraction (MCP)', () => {
       const result = processMCPEnv({ options, user, customUserVars });
 
       expect('headers' in result && result.headers).toEqual({
-        Authorization: 'ghp_1234567890abcdef1234567890abcdef12345678',
+        Authorization: 'GITHUB_TOKEN_TEST',
         'Content-Type': 'application/json',
         'User-Agent': 'LibreChat-MCP-Client',
       });
