@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
+import { getConfigDefaults } from 'librechat-data-provider';
 import type { TMessageContentParts } from 'librechat-data-provider';
 import type { TMessageProps, TMessageIcon } from '~/common';
 import { useMessageHelpers, useLocalize, useAttachments } from '~/hooks';
+import { useGetStartupConfig } from '~/data-provider';
 import MessageIcon from '~/components/Chat/Messages/MessageIcon';
 import ContentParts from './Content/ContentParts';
 import { fontSizeAtom } from '~/store/fontSize';
@@ -11,11 +13,15 @@ import SiblingSwitch from './SiblingSwitch';
 import MultiMessage from './MultiMessage';
 import HoverButtons from './HoverButtons';
 import SubRow from './SubRow';
+import StatusLine from './StatusLine';
 import { cn, getMessageAriaLabel } from '~/utils';
 import store from '~/store';
 
+const defaultInterface = getConfigDefaults().interface;
+
 export default function Message(props: TMessageProps) {
   const localize = useLocalize();
+  const { data: startupConfig } = useGetStartupConfig();
   const { message, siblingIdx, siblingCount, setSiblingIdx, currentEditId, setCurrentEditId } =
     props;
   const { attachments, searchResults } = useAttachments({
@@ -41,6 +47,11 @@ export default function Message(props: TMessageProps) {
   const fontSize = useAtomValue(fontSizeAtom);
   const maximizeChatSpace = useRecoilValue(store.maximizeChatSpace);
   const { children, messageId = null, isCreatedByUser } = message ?? {};
+  const interfaceConfig = useMemo(
+    () => startupConfig?.interface ?? defaultInterface,
+    [startupConfig],
+  );
+  const showStatusLine = interfaceConfig?.statusLine === true;
 
   const name = useMemo(() => {
     let result = '';
@@ -131,8 +142,8 @@ export default function Message(props: TMessageProps) {
                     content={message.content as Array<TMessageContentParts | undefined>}
                   />
                 </div>
-                {isLast && isSubmitting ? (
-                  <div className="mt-1 h-[27px] bg-transparent" />
+                {isLast && isSubmitting && !isCreatedByUser && showStatusLine ? (
+                  <StatusLine message={message} isSubmitting={isSubmitting} />
                 ) : (
                   <SubRow classes="text-xs">
                     <SiblingSwitch

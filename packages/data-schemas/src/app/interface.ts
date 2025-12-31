@@ -37,6 +37,7 @@ export async function loadDefaultInterface({
     parameters: interfaceConfig?.parameters ?? (hasModelSpecs ? false : defaults.parameters),
     presets: interfaceConfig?.presets ?? (hasModelSpecs ? false : defaults.presets),
     sidePanel: interfaceConfig?.sidePanel ?? defaults.sidePanel,
+    statusLine: interfaceConfig?.statusLine ?? defaults.statusLine,
     privacyPolicy: interfaceConfig?.privacyPolicy ?? defaults.privacyPolicy,
     termsOfService: interfaceConfig?.termsOfService ?? defaults.termsOfService,
     mcpServers: interfaceConfig?.mcpServers ?? defaults.mcpServers,

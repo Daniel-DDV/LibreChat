@@ -2918,3 +2918,53 @@ html {
 .sharepoint-picker-bg {
   background-color: #f5f5f5;
 }
+
+@keyframes status-beam {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.status-terminal {
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background-color: #000;
+}
+
+.status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.status-beam {
+  font-weight: 700;
+  background: linear-gradient(
+    90deg,
+    #555 0%,
+    #555 40%,
+    #fff 50%,
+    #555 60%,
+    #555 100%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.35));
+  animation: status-beam 2s linear infinite;
+}
+
+.status-dim {
+  color: #555;
+  font-weight: 400;
+  white-space: nowrap;
+}
