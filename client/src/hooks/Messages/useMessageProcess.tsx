@@ -1,32 +1,19 @@
-import { useRecoilValue } from 'recoil';
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import throttle from 'lodash/throttle';
+import { Constants } from 'librechat-data-provider';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import type { TMessage } from 'librechat-data-provider';
-import { useChatContext, useAddedChatContext } from '~/Providers';
-import { getLatestText, getLengthAndFirstFiveChars } from '~/utils';
-import store from '~/store';
+import { getTextKey, TEXT_KEY_DIVIDER, logger } from '~/utils';
+import { useMessagesViewContext } from '~/Providers';
 
 export default function useMessageProcess({ message }: { message?: TMessage | null }) {
   const latestText = useRef<string | number>('');
-  const hasNoChildren = useMemo(() => !message?.children?.length, [message]);
-  const [siblingMessage, setSiblingMessage] = useState<TMessage | null>(null);
+  const hasNoChildren = useMemo(() => (message?.children?.length ?? 0) === 0, [message]);
 
-  const {
-    index,
-    conversation,
-    latestMessage,
-    setAbortScroll,
-    setLatestMessage,
-    isSubmitting: isSubmittingRoot,
-  } = useChatContext();
-  const { isSubmitting: isSubmittingAdditional } = useAddedChatContext();
-  const latestMultiMessage = useRecoilValue(store.latestMessageFamily(index + 1));
-  const isSubmittingFamily = useMemo(
-    () => isSubmittingRoot || isSubmittingAdditional,
-    [isSubmittingRoot, isSubmittingAdditional],
-  );
+  const { conversation, setAbortScroll, setLatestMessage, isSubmitting } = useMessagesViewContext();
 
   useEffect(() => {
-    if (conversation?.conversationId === 'new') {
+    const convoId = conversation?.conversationId;
+    if (convoId === Constants.NEW_CONVO) {
       return;
     }
     if (!message) {
@@ -36,53 +23,60 @@ export default function useMessageProcess({ message }: { message?: TMessage | nu
       return;
     }
 
-    const text = getLatestText(message);
-    const textKey = `${message?.messageId ?? ''}${getLengthAndFirstFiveChars(text)}`;
+    const textKey = getTextKey(message, convoId);
 
-    if (textKey === latestText.current) {
-      return;
+    // Check for text/conversation change
+    const logInfo = {
+      textKey,
+      'latestText.current': latestText.current,
+      messageId: message.messageId,
+      convoId,
+    };
+
+    /* Extracted convoId from previous textKey (format: messageId|||length|||lastChars|||convoId) */
+    let previousConvoId: string | null = null;
+    if (
+      latestText.current &&
+      typeof latestText.current === 'string' &&
+      latestText.current.length > 0
+    ) {
+      const parts = latestText.current.split(TEXT_KEY_DIVIDER);
+      previousConvoId = parts[parts.length - 1] || null;
     }
 
-    latestText.current = textKey;
-    setLatestMessage({ ...message });
+    if (
+      textKey !== latestText.current ||
+      (convoId != null && previousConvoId != null && convoId !== previousConvoId)
+    ) {
+      logger.log('latest_message', '[useMessageProcess] Setting latest message; logInfo:', logInfo);
+      latestText.current = textKey;
+      setLatestMessage({ ...message });
+    } else {
+      logger.log('latest_message', 'No change in latest message; logInfo', logInfo);
+    }
   }, [hasNoChildren, message, setLatestMessage, conversation?.conversationId]);
 
-  const handleScroll = useCallback(() => {
-    if (isSubmittingFamily) {
-      setAbortScroll(true);
-    } else {
-      setAbortScroll(false);
-    }
-  }, [isSubmittingFamily, setAbortScroll]);
-
-  const showSibling = useMemo(
-    () =>
-      (hasNoChildren && latestMultiMessage && !latestMultiMessage?.children?.length) ||
-      siblingMessage,
-    [hasNoChildren, latestMultiMessage, siblingMessage],
+  const handleScroll = useCallback(
+    (event: unknown | TouchEvent | WheelEvent) => {
+      throttle(() => {
+        logger.log(
+          'message_scrolling',
+          `useMessageProcess: setting abort scroll to ${isSubmitting}, handleScroll event`,
+          event,
+        );
+        if (isSubmitting) {
+          setAbortScroll(true);
+        } else {
+          setAbortScroll(false);
+        }
+      }, 500)();
+    },
+    [isSubmitting, setAbortScroll],
   );
 
-  useEffect(() => {
-    if (
-      hasNoChildren &&
-      latestMultiMessage &&
-      latestMultiMessage.conversationId === message?.conversationId
-    ) {
-      const newSibling = Object.assign({}, latestMultiMessage, {
-        parentMessageId: message?.parentMessageId,
-        depth: message?.depth,
-      });
-      setSiblingMessage(newSibling);
-    }
-  }, [hasNoChildren, latestMultiMessage, message, setSiblingMessage, latestMessage]);
-
   return {
-    showSibling,
     handleScroll,
+    isSubmitting,
     conversation,
-    siblingMessage,
-    setSiblingMessage,
-    isSubmittingFamily,
-    latestMultiMessage,
   };
 }

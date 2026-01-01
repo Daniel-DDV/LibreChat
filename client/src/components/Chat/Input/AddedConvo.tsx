@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { useGetEndpointsQuery } from 'librechat-data-provider/react-query';
-import type { TConversation, TEndpointOption, TPreset } from 'librechat-data-provider';
+import { isAgentsEndpoint } from 'librechat-data-provider';
+import type { TConversation } from 'librechat-data-provider';
 import type { SetterOrUpdater } from 'recoil';
-import useGetSender from '~/hooks/Conversations/useGetSender';
+import { useGetEndpointsQuery } from '~/data-provider';
 import { EndpointIcon } from '~/components/Endpoints';
-import { getPresetTitle } from '~/utils';
+import { useAgentsMapContext } from '~/Providers';
 
 export default function AddedConvo({
   addedConvo,
@@ -13,13 +13,23 @@ export default function AddedConvo({
   addedConvo: TConversation | null;
   setAddedConvo: SetterOrUpdater<TConversation | null>;
 }) {
-  const getSender = useGetSender();
+  const agentsMap = useAgentsMapContext();
   const { data: endpointsConfig } = useGetEndpointsQuery();
   const title = useMemo(() => {
-    const sender = getSender(addedConvo as TEndpointOption);
-    const title = getPresetTitle(addedConvo as TPreset);
-    return `+ ${sender}: ${title}`;
-  }, [addedConvo, getSender]);
+    // Priority: agent name > modelDisplayLabel > modelLabel > model
+    if (isAgentsEndpoint(addedConvo?.endpoint) && addedConvo?.agent_id) {
+      const agent = agentsMap?.[addedConvo.agent_id];
+      if (agent?.name) {
+        return `+ ${agent.name}`;
+      }
+    }
+
+    const endpointConfig = endpointsConfig?.[addedConvo?.endpoint ?? ''];
+    const displayLabel =
+      endpointConfig?.modelDisplayLabel || addedConvo?.modelLabel || addedConvo?.model || 'AI';
+
+    return `+ ${displayLabel}`;
+  }, [addedConvo, agentsMap, endpointsConfig]);
 
   if (!addedConvo) {
     return null;
@@ -43,6 +53,7 @@ export default function AddedConvo({
       <button
         className="text-token-text-secondary flex-shrink-0"
         type="button"
+        aria-label="Close added conversation"
         onClick={() => setAddedConvo(null)}
       >
         <svg
@@ -52,6 +63,7 @@ export default function AddedConvo({
           fill="none"
           viewBox="0 0 24 24"
           className="icon-lg"
+          aria-hidden="true"
         >
           <path
             fill="currentColor"

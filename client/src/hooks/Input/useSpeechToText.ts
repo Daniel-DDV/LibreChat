@@ -1,82 +1,48 @@
-import { useState, useEffect } from 'react';
 import useSpeechToTextBrowser from './useSpeechToTextBrowser';
 import useSpeechToTextExternal from './useSpeechToTextExternal';
-import { useRecoilState } from 'recoil';
-import store from '~/store';
+import useGetAudioSettings from './useGetAudioSettings';
 
-const useSpeechToText = (handleTranscriptionComplete: (text: string) => void) => {
-  const [endpointSTT] = useRecoilState<string>(store.endpointSTT);
-  const useExternalSpeechToText = endpointSTT === 'external';
-  const [animatedText, setAnimatedText] = useState('');
+const useSpeechToText = (
+  setText: (text: string) => void,
+  onTranscriptionComplete: (text: string) => void,
+): {
+  isLoading?: boolean;
+  isListening?: boolean;
+  stopRecording: () => void | (() => Promise<void>);
+  startRecording: () => void | (() => Promise<void>);
+} => {
+  const { speechToTextEndpoint } = useGetAudioSettings();
+  const externalSpeechToText = speechToTextEndpoint === 'external';
 
   const {
     isListening: speechIsListeningBrowser,
     isLoading: speechIsLoadingBrowser,
-    text: speechTextBrowser,
     startRecording: startSpeechRecordingBrowser,
     stopRecording: stopSpeechRecordingBrowser,
-  } = useSpeechToTextBrowser();
+  } = useSpeechToTextBrowser(setText, onTranscriptionComplete);
 
   const {
     isListening: speechIsListeningExternal,
     isLoading: speechIsLoadingExternal,
-    text: speechTextExternal,
     externalStartRecording: startSpeechRecordingExternal,
     externalStopRecording: stopSpeechRecordingExternal,
-    clearText,
-  } = useSpeechToTextExternal(handleTranscriptionComplete);
+  } = useSpeechToTextExternal(setText, onTranscriptionComplete);
 
-  const isListening = useExternalSpeechToText
-    ? speechIsListeningExternal
-    : speechIsListeningBrowser;
-  const isLoading = useExternalSpeechToText ? speechIsLoadingExternal : speechIsLoadingBrowser;
-  const speechTextForm = useExternalSpeechToText ? speechTextExternal : speechTextBrowser;
-  const startRecording = useExternalSpeechToText
+  const isListening = externalSpeechToText ? speechIsListeningExternal : speechIsListeningBrowser;
+  const isLoading = externalSpeechToText ? speechIsLoadingExternal : speechIsLoadingBrowser;
+
+  const startRecording = externalSpeechToText
     ? startSpeechRecordingExternal
     : startSpeechRecordingBrowser;
-  const stopRecording = useExternalSpeechToText
+  const stopRecording = externalSpeechToText
     ? stopSpeechRecordingExternal
     : stopSpeechRecordingBrowser;
-  const speechText =
-    isListening || (speechTextExternal && speechTextExternal.length > 0)
-      ? speechTextExternal
-      : speechTextForm || '';
-
-  const animateTextTyping = (text: string) => {
-    const totalDuration = 2000;
-    const frameRate = 60;
-    const totalFrames = totalDuration / (1000 / frameRate);
-    const charsPerFrame = Math.ceil(text.length / totalFrames);
-    let currentIndex = 0;
-
-    const animate = () => {
-      currentIndex += charsPerFrame;
-      const currentText = text.substring(0, currentIndex);
-      setAnimatedText(currentText);
-
-      if (currentIndex < text.length) {
-        requestAnimationFrame(animate);
-      } else {
-        setAnimatedText(text);
-      }
-    };
-
-    requestAnimationFrame(animate);
-  };
-
-  useEffect(() => {
-    if (speechText) {
-      animateTextTyping(speechText);
-    }
-  }, [speechText]);
 
   return {
-    isListening,
     isLoading,
-    startRecording,
+    isListening,
     stopRecording,
-    speechText: animatedText,
-    clearText,
+    startRecording,
   };
 };
 

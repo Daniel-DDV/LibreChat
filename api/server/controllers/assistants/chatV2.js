@@ -1,12 +1,15 @@
 const { v4 } = require('uuid');
+const { sleep } = require('@librechat/agents');
+const { logger } = require('@librechat/data-schemas');
+const { sendEvent, getBalanceConfig, getModelMaxTokens, countTokens } = require('@librechat/api');
 const {
+  Time,
   Constants,
   RunStatus,
   CacheKeys,
   ContentTypes,
   ToolCallTypes,
   EModelEndpoint,
-  ViolationTypes,
   retrievalMimeTypes,
   AssistantStreamEvents,
 } = require('librechat-data-provider');
@@ -14,37 +17,34 @@ const {
   initThread,
   recordUsage,
   saveUserMessage,
-  checkMessageGaps,
   addThreadMetadata,
   saveAssistantMessage,
 } = require('~/server/services/Threads');
-const { sendResponse, sendMessage, sleep, isEnabled, countTokens } = require('~/server/utils');
 const { runAssistant, createOnTextProgress } = require('~/server/services/AssistantService');
+const { createErrorHandler } = require('~/server/controllers/assistants/errors');
 const validateAuthor = require('~/server/middleware/assistants/validateAuthor');
 const { createRun, StreamRunManager } = require('~/server/services/Runs');
 const { addTitle } = require('~/server/services/Endpoints/assistants');
+const { createRunBody } = require('~/server/services/createRunBody');
 const { getTransactions } = require('~/models/Transaction');
-const checkBalance = require('~/models/checkBalance');
+const { checkBalance } = require('~/models/balanceMethods');
 const { getConvo } = require('~/models/Conversation');
 const getLogStores = require('~/cache/getLogStores');
-const { getModelMaxTokens } = require('~/utils');
 const { getOpenAIClient } = require('./helpers');
-const { logger } = require('~/config');
-
-const ten_minutes = 1000 * 60 * 10;
 
 /**
  * @route POST /
  * @desc Chat with an assistant
  * @access Public
- * @param {Express.Request} req - The request object, containing the request data.
+ * @param {ServerRequest} req - The request object, containing the request data.
  * @param {Express.Response} res - The response object, used to send back a response.
  * @returns {void}
  */
 const chatV2 = async (req, res) => {
   logger.debug('[/assistants/chat/] req.body', req.body);
+  const appConfig = req.config;
 
-  /** @type {{ files: MongoFile[]}} */
+  /** @type {{files: MongoFile[]}} */
   const {
     text,
     model,
@@ -53,13 +53,15 @@ const chatV2 = async (req, res) => {
     promptPrefix,
     assistant_id,
     instructions,
+    endpointOption,
     thread_id: _thread_id,
     messageId: _messageId,
     conversationId: convoId,
     parentMessageId: _parentId = Constants.NO_PARENT,
+    clientTimestamp,
   } = req.body;
 
-  /** @type {OpenAIClient} */
+  /** @type {OpenAI} */
   let openai;
   /** @type {string|undefined} - the current thread id */
   let thread_id = _thread_id;
@@ -90,139 +92,20 @@ const chatV2 = async (req, res) => {
   /** @type {Run | undefined} - The completed run, undefined if incomplete */
   let completedRun;
 
-  const handleError = async (error) => {
-    const defaultErrorMessage =
-      'The Assistant run failed to initialize. Try sending a message in a new conversation.';
-    const messageData = {
-      thread_id,
-      assistant_id,
-      conversationId,
-      parentMessageId,
-      sender: 'System',
-      user: req.user.id,
-      shouldSaveMessage: false,
-      messageId: responseMessageId,
-      endpoint,
-    };
+  const getContext = () => ({
+    openai,
+    run_id,
+    endpoint,
+    cacheKey,
+    thread_id,
+    completedRun,
+    assistant_id,
+    conversationId,
+    parentMessageId,
+    responseMessageId,
+  });
 
-    if (error.message === 'Run cancelled') {
-      return res.end();
-    } else if (error.message === 'Request closed' && completedRun) {
-      return;
-    } else if (error.message === 'Request closed') {
-      logger.debug('[/assistants/chat/] Request aborted on close');
-    } else if (/Files.*are invalid/.test(error.message)) {
-      const errorMessage = `Files are invalid, or may not have uploaded yet.${
-        endpoint === EModelEndpoint.azureAssistants
-          ? ' If using Azure OpenAI, files are only available in the region of the assistant\'s model at the time of upload.'
-          : ''
-      }`;
-      return sendResponse(res, messageData, errorMessage);
-    } else if (error?.message?.includes('string too long')) {
-      return sendResponse(
-        res,
-        messageData,
-        'Message too long. The Assistants API has a limit of 32,768 characters per message. Please shorten it and try again.',
-      );
-    } else if (error?.message?.includes(ViolationTypes.TOKEN_BALANCE)) {
-      return sendResponse(res, messageData, error.message);
-    } else {
-      logger.error('[/assistants/chat/]', error);
-    }
-
-    if (!openai || !thread_id || !run_id) {
-      return sendResponse(res, messageData, defaultErrorMessage);
-    }
-
-    await sleep(2000);
-
-    try {
-      const status = await cache.get(cacheKey);
-      if (status === 'cancelled') {
-        logger.debug('[/assistants/chat/] Run already cancelled');
-        return res.end();
-      }
-      await cache.delete(cacheKey);
-      const cancelledRun = await openai.beta.threads.runs.cancel(thread_id, run_id);
-      logger.debug('[/assistants/chat/] Cancelled run:', cancelledRun);
-    } catch (error) {
-      logger.error('[/assistants/chat/] Error cancelling run', error);
-    }
-
-    await sleep(2000);
-
-    let run;
-    try {
-      run = await openai.beta.threads.runs.retrieve(thread_id, run_id);
-      await recordUsage({
-        ...run.usage,
-        model: run.model,
-        user: req.user.id,
-        conversationId,
-      });
-    } catch (error) {
-      logger.error('[/assistants/chat/] Error fetching or processing run', error);
-    }
-
-    let finalEvent;
-    try {
-      const runMessages = await checkMessageGaps({
-        openai,
-        run_id,
-        endpoint,
-        thread_id,
-        conversationId,
-        latestMessageId: responseMessageId,
-      });
-
-      const errorContentPart = {
-        text: {
-          value:
-            error?.message ?? 'There was an error processing your request. Please try again later.',
-        },
-        type: ContentTypes.ERROR,
-      };
-
-      if (!Array.isArray(runMessages[runMessages.length - 1]?.content)) {
-        runMessages[runMessages.length - 1].content = [errorContentPart];
-      } else {
-        const contentParts = runMessages[runMessages.length - 1].content;
-        for (let i = 0; i < contentParts.length; i++) {
-          const currentPart = contentParts[i];
-          /** @type {CodeToolCall | RetrievalToolCall | FunctionToolCall | undefined} */
-          const toolCall = currentPart?.[ContentTypes.TOOL_CALL];
-          if (
-            toolCall &&
-            toolCall?.function &&
-            !(toolCall?.function?.output || toolCall?.function?.output?.length)
-          ) {
-            contentParts[i] = {
-              ...currentPart,
-              [ContentTypes.TOOL_CALL]: {
-                ...toolCall,
-                function: {
-                  ...toolCall.function,
-                  output: 'error processing tool',
-                },
-              },
-            };
-          }
-        }
-        runMessages[runMessages.length - 1].content.push(errorContentPart);
-      }
-
-      finalEvent = {
-        final: true,
-        conversation: await getConvo(req.user.id, conversationId),
-        runMessages,
-      };
-    } catch (error) {
-      logger.error('[/assistants/chat/] Error finalizing error process', error);
-      return sendResponse(res, messageData, 'The Assistant run failed');
-    }
-
-    return sendResponse(res, finalEvent);
-  };
+  const handleError = createErrorHandler({ req, res, getContext });
 
   try {
     res.on('close', async () => {
@@ -242,7 +125,8 @@ const chatV2 = async (req, res) => {
     }
 
     const checkBalanceBeforeRun = async () => {
-      if (!isEnabled(process.env.CHECK_BALANCE)) {
+      const balanceConfig = getBalanceConfig(appConfig);
+      if (!balanceConfig?.enabled) {
         return;
       }
       const transactions =
@@ -276,11 +160,10 @@ const chatV2 = async (req, res) => {
       });
     };
 
-    const { openai: _openai, client } = await getOpenAIClient({
+    const { openai: _openai } = await getOpenAIClient({
       req,
       res,
-      endpointOption: req.body.endpointOption,
-      initAppClient: true,
+      endpointOption,
     });
 
     openai = _openai;
@@ -304,18 +187,14 @@ const chatV2 = async (req, res) => {
     };
 
     /** @type {CreateRunBody | undefined} */
-    const body = {
+    const body = createRunBody({
       assistant_id,
       model,
-    };
-
-    if (promptPrefix) {
-      body.additional_instructions = promptPrefix;
-    }
-
-    if (instructions) {
-      body.instructions = instructions;
-    }
+      promptPrefix,
+      instructions,
+      endpointOption,
+      clientTimestamp,
+    });
 
     const getRequestFileIds = async () => {
       let thread_file_ids = [];
@@ -365,6 +244,9 @@ const chatV2 = async (req, res) => {
       }
     };
 
+    /** @type {Promise<Run>|undefined} */
+    let userMessagePromise;
+
     const initializeThread = async () => {
       await getRequestFileIds();
 
@@ -407,7 +289,7 @@ const chatV2 = async (req, res) => {
       previousMessages.push(requestMessage);
 
       /* asynchronous */
-      saveUserMessage({ ...requestMessage, model });
+      userMessagePromise = saveUserMessage(req, { ...requestMessage, model });
 
       conversation = {
         conversationId,
@@ -427,7 +309,7 @@ const chatV2 = async (req, res) => {
     await Promise.all(promises);
 
     const sendInitialResponse = () => {
-      sendMessage(res, {
+      sendEvent(res, {
         sync: true,
         conversationId,
         // messages: previousMessages,
@@ -472,7 +354,7 @@ const chatV2 = async (req, res) => {
         });
 
         run_id = run.id;
-        await cache.set(cacheKey, `${thread_id}:${run_id}`, ten_minutes);
+        await cache.set(cacheKey, `${thread_id}:${run_id}`, Time.TEN_MINUTES);
         sendInitialResponse();
 
         // todo: retry logic
@@ -483,11 +365,16 @@ const chatV2 = async (req, res) => {
       /** @type {{[AssistantStreamEvents.ThreadRunCreated]: (event: ThreadRunCreated) => Promise<void>}} */
       const handlers = {
         [AssistantStreamEvents.ThreadRunCreated]: async (event) => {
-          await cache.set(cacheKey, `${thread_id}:${event.data.id}`, ten_minutes);
+          await cache.set(cacheKey, `${thread_id}:${event.data.id}`, Time.TEN_MINUTES);
           run_id = event.data.id;
           sendInitialResponse();
         },
       };
+
+      /** @type {undefined | TAssistantEndpoint} */
+      const config = appConfig.endpoints?.[endpoint] ?? {};
+      /** @type {undefined | TBaseEndpoint} */
+      const allConfig = appConfig.endpoints?.all;
 
       const streamRunManager = new StreamRunManager({
         req,
@@ -498,6 +385,7 @@ const chatV2 = async (req, res) => {
         attachedFileIds,
         parentMessageId: userMessageId,
         responseMessage: openai.responseMessage,
+        streamRate: allConfig?.streamRate ?? config.streamRate,
         // streamOptions: {
 
         // },
@@ -540,9 +428,11 @@ const chatV2 = async (req, res) => {
       thread_id,
       model: assistant_id,
       endpoint,
+      spec: endpointOption.spec,
+      iconURL: endpointOption.iconURL,
     };
 
-    sendMessage(res, {
+    sendEvent(res, {
       final: true,
       conversation,
       requestMessage: {
@@ -552,14 +442,16 @@ const chatV2 = async (req, res) => {
     });
     res.end();
 
-    await saveAssistantMessage({ ...responseMessage, model });
+    if (userMessagePromise) {
+      await userMessagePromise;
+    }
+    await saveAssistantMessage(req, { ...responseMessage, model });
 
     if (parentMessageId === Constants.NO_PARENT && !_thread_id) {
       addTitle(req, {
         text,
         responseText: response.text,
         conversationId,
-        client,
       });
     }
 
@@ -572,7 +464,7 @@ const chatV2 = async (req, res) => {
 
     if (!response.run.usage) {
       await sleep(3000);
-      completedRun = await openai.beta.threads.runs.retrieve(thread_id, response.run.id);
+      completedRun = await openai.beta.threads.runs.retrieve(response.run.id, { thread_id });
       if (completedRun.usage) {
         await recordUsage({
           ...completedRun.usage,

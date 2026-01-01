@@ -1,49 +1,55 @@
-const ask = require('./ask');
-const edit = require('./edit');
+const accessPermissions = require('./accessPermissions');
+const assistants = require('./assistants');
+const categories = require('./categories');
+const endpoints = require('./endpoints');
+const staticRoute = require('./static');
 const messages = require('./messages');
-const convos = require('./convos');
+const memories = require('./memories');
 const presets = require('./presets');
 const prompts = require('./prompts');
+const balance = require('./balance');
+const actions = require('./actions');
+const banner = require('./banner');
 const search = require('./search');
-const tokenizer = require('./tokenizer');
+const models = require('./models');
+const convos = require('./convos');
+const config = require('./config');
+const agents = require('./agents');
+const roles = require('./roles');
+const oauth = require('./oauth');
+const files = require('./files');
+const share = require('./share');
+const tags = require('./tags');
 const auth = require('./auth');
 const keys = require('./keys');
-const oauth = require('./oauth');
-const endpoints = require('./endpoints');
-const balance = require('./balance');
-const models = require('./models');
-const plugins = require('./plugins');
 const user = require('./user');
-const config = require('./config');
-const assistants = require('./assistants');
-const files = require('./files');
-const staticRoute = require('./static');
-const share = require('./share');
-const categories = require('./categories');
-const roles = require('./roles');
+const mcp = require('./mcp');
 
 module.exports = {
-  search,
-  ask,
-  edit,
-  messages,
-  convos,
-  presets,
-  prompts,
+  mcp,
   auth,
   keys,
-  oauth,
   user,
-  tokenizer,
-  endpoints,
-  balance,
-  models,
-  plugins,
-  config,
-  assistants,
-  files,
-  staticRoute,
-  share,
-  categories,
+  tags,
   roles,
+  oauth,
+  files,
+  share,
+  banner,
+  agents,
+  convos,
+  search,
+  config,
+  models,
+  prompts,
+  actions,
+  presets,
+  balance,
+  messages,
+  memories,
+  endpoints,
+  assistants,
+  categories,
+  staticRoute,
+  accessPermissions,
 };

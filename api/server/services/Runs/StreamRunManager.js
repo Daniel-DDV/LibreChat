@@ -1,18 +1,18 @@
-const throttle = require('lodash/throttle');
+const { sleep } = require('@librechat/agents');
+const { sendEvent } = require('@librechat/api');
+const { logger } = require('@librechat/data-schemas');
 const {
+  Constants,
   StepTypes,
   ContentTypes,
   ToolCallTypes,
-  // StepStatus,
   MessageContentTypes,
   AssistantStreamEvents,
 } = require('librechat-data-provider');
 const { retrieveAndProcessFile } = require('~/server/services/Files/process');
 const { processRequiredActions } = require('~/server/services/ToolService');
-const { saveMessage, updateMessageText } = require('~/models/Message');
-const { createOnProgress, sendMessage } = require('~/server/utils');
 const { processMessages } = require('~/server/services/Threads');
-const { logger } = require('~/config');
+const { createOnProgress } = require('~/server/utils');
 
 /**
  * Implements the StreamRunManager functionality for managing the streaming
@@ -36,7 +36,7 @@ class StreamRunManager {
     /** @type {Run | null} */
     this.run = null;
 
-    /** @type {Express.Request} */
+    /** @type {ServerRequest} */
     this.req = fields.req;
     /** @type {Express.Response} */
     this.res = fields.res;
@@ -68,8 +68,8 @@ class StreamRunManager {
     this.attachedFileIds = fields.attachedFileIds;
     /** @type {undefined | Promise<ChatCompletion>} */
     this.visionPromise = fields.visionPromise;
-    /** @type {boolean} */
-    this.savedInitialMessage = false;
+    /** @type {number} */
+    this.streamRate = fields.streamRate ?? Constants.DEFAULT_STREAM_RATE;
 
     /**
      * @type {Object.<AssistantStreamEvents, (event: AssistantStreamEvent) => Promise<void>>}
@@ -128,7 +128,7 @@ class StreamRunManager {
       conversationId: this.finalMessage.conversationId,
     };
 
-    sendMessage(this.res, contentData);
+    sendEvent(this.res, contentData);
   }
 
   /* <------------------ Misc. Helpers ------------------> */
@@ -139,11 +139,11 @@ class StreamRunManager {
     return this.intermediateText;
   }
 
-  /** Saves the initial intermediate message
-   * @returns {Promise<void>}
+  /** Returns the current, intermediate message
+   * @returns {TMessage}
    */
-  async saveInitialMessage() {
-    return saveMessage({
+  getIntermediateMessage() {
+    return {
       conversationId: this.finalMessage.conversationId,
       messageId: this.finalMessage.messageId,
       parentMessageId: this.parentMessageId,
@@ -155,7 +155,7 @@ class StreamRunManager {
       sender: 'Assistant',
       unfinished: true,
       error: false,
-    });
+    };
   }
 
   /* <------------------ Main Event Handlers ------------------> */
@@ -304,7 +304,7 @@ class StreamRunManager {
 
           for (const d of delta[key]) {
             if (typeof d === 'object' && !Object.prototype.hasOwnProperty.call(d, 'index')) {
-              logger.warn('Expected an object with an \'index\' for array updates but got:', d);
+              logger.warn("Expected an object with an 'index' for array updates but got:", d);
               continue;
             }
 
@@ -327,7 +327,7 @@ class StreamRunManager {
           }
         } else if (typeof delta[key] === 'string' && typeof data[key] === 'string') {
           // Concatenate strings
-          data[key] += delta[key];
+          // data[key] += delta[key];
         } else if (
           typeof delta[key] === 'object' &&
           delta[key] !== null &&
@@ -347,6 +347,8 @@ class StreamRunManager {
           type: ContentTypes.TOOL_CALL,
           index,
         });
+
+        await sleep(this.streamRate);
       }
     };
 
@@ -444,6 +446,7 @@ class StreamRunManager {
     if (content && content.type === MessageContentTypes.TEXT) {
       this.intermediateText += content.text.value;
       onProgress(content.text.value);
+      await sleep(this.streamRate);
     }
   }
 
@@ -503,12 +506,30 @@ class StreamRunManager {
    * @param {RequiredAction[]} actions - The required actions.
    * @returns {ToolOutput[]} completeOutputs - The complete outputs.
    */
-  checkMissingOutputs(tool_outputs, actions) {
+  checkMissingOutputs(tool_outputs = [], actions = []) {
     const missingOutputs = [];
+    const MISSING_OUTPUT_MESSAGE =
+      'The tool failed to produce an output. The tool may not be currently available or experienced an unhandled error.';
+    const outputIds = new Set();
+    const validatedOutputs = tool_outputs.map((output) => {
+      if (!output) {
+        logger.warn('Tool output is undefined');
+        return;
+      }
+      outputIds.add(output.tool_call_id);
+      if (!output.output) {
+        logger.warn(`Tool output exists but has no output property (ID: ${output.tool_call_id})`);
+        return {
+          ...output,
+          output: MISSING_OUTPUT_MESSAGE,
+        };
+      }
+      return output;
+    });
 
     for (const item of actions) {
       const { tool, toolCallId, run_id, thread_id } = item;
-      const outputExists = tool_outputs.some((output) => output.tool_call_id === toolCallId);
+      const outputExists = outputIds.has(toolCallId);
 
       if (!outputExists) {
         logger.warn(
@@ -516,13 +537,12 @@ class StreamRunManager {
         );
         missingOutputs.push({
           tool_call_id: toolCallId,
-          output:
-            'The tool failed to produce an output. The tool may not be currently available or experienced an unhandled error.',
+          output: MISSING_OUTPUT_MESSAGE,
         });
       }
     }
 
-    return [...tool_outputs, ...missingOutputs];
+    return [...validatedOutputs, ...missingOutputs];
   }
 
   /* <------------------ Run Event handlers ------------------> */
@@ -553,9 +573,9 @@ class StreamRunManager {
     let toolRun;
     try {
       toolRun = this.openai.beta.threads.runs.submitToolOutputsStream(
-        run.thread_id,
         run.id,
         {
+          thread_id: run.thread_id,
           tool_outputs,
           stream: true,
         },
@@ -589,27 +609,8 @@ class StreamRunManager {
       const index = this.getStepIndex(stepKey);
       this.orderedRunSteps.set(index, message_creation);
 
-      // Create the Factory Function to stream the message
-      const { onProgress: progressCallback } = createOnProgress({
-        onProgress: throttle(
-          () => {
-            if (!this.savedInitialMessage) {
-              this.saveInitialMessage();
-              this.savedInitialMessage = true;
-            } else {
-              updateMessageText({
-                messageId: this.finalMessage.messageId,
-                text: this.getText(),
-              });
-            }
-          },
-          2000,
-          { trailing: false },
-        ),
-      });
+      const { onProgress: progressCallback } = createOnProgress();
 
-      // This creates a function that attaches all of the parameters
-      // specified here to each SSE message generated by the TextStream
       const onProgress = progressCallback({
         index,
         res: this.res,

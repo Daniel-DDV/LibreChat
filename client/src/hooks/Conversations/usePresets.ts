@@ -1,8 +1,9 @@
 import filenamify from 'filenamify';
 import exportFromJSON from 'export-from-json';
+import { useToastContext } from '@librechat/client';
 import { QueryKeys } from 'librechat-data-provider';
-import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRecoilState, useSetRecoilState, useRecoilValue } from 'recoil';
 import { useCreatePresetMutation, useGetModelsQuery } from 'librechat-data-provider/react-query';
 import type { TPreset, TEndpointsConfig } from 'librechat-data-provider';
@@ -13,11 +14,11 @@ import {
 } from '~/data-provider';
 import { cleanupPreset, removeUnavailableTools, getConvoSwitchLogic } from '~/utils';
 import useDefaultConvo from '~/hooks/Conversations/useDefaultConvo';
-import { useChatContext, useToastContext } from '~/Providers';
 import { useAuthContext } from '~/hooks/AuthContext';
 import { NotificationSeverity } from '~/common';
-import useLocalize from '~/hooks/useLocalize';
 import useNewConvo from '~/hooks/useNewConvo';
+import { useChatContext } from '~/Providers';
+import { useLocalize } from '~/hooks';
 import store from '~/store';
 
 export default function usePresets() {
@@ -26,6 +27,8 @@ export default function usePresets() {
   const queryClient = useQueryClient();
   const { showToast } = useToastContext();
   const { user, isAuthenticated } = useAuthContext();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [presetToDelete, setPresetToDelete] = useState<TPreset | null>(null);
 
   const modularChat = useRecoilValue(store.modularChat);
   const availableTools = useRecoilValue(store.availableTools);
@@ -46,7 +49,7 @@ export default function usePresets() {
       return;
     }
 
-    if (presets && presets.length > 0 && user && presets[0].user !== user?.id) {
+    if (presets && presets.length > 0 && user && presets[0].user !== user.id) {
       presetsQuery.refetch();
       return;
     }
@@ -58,7 +61,7 @@ export default function usePresets() {
     }
     setDefaultPreset(defaultPreset);
     if (!conversation?.conversationId || conversation.conversationId === 'new') {
-      newConversation({ preset: defaultPreset, modelsData });
+      newConversation({ preset: defaultPreset, modelsData, disableParams: true });
     }
     hasLoaded.current = true;
     // dependencies are stable and only needed once
@@ -80,11 +83,16 @@ export default function usePresets() {
       }
       const previousPresets = presetsQuery.data ?? [];
       if (previousPresets) {
-        setPresets(previousPresets.filter((p) => p.presetId !== preset?.presetId));
+        setPresets(previousPresets.filter((p) => p.presetId !== preset.presetId));
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries([QueryKeys.presets]);
+      showToast({
+        message: localize('com_endpoint_preset_delete_success'),
+        severity: NotificationSeverity.SUCCESS,
+        showIcon: true,
+      });
     },
     onError: (error) => {
       queryClient.invalidateQueries([QueryKeys.presets]);
@@ -92,6 +100,7 @@ export default function usePresets() {
       showToast({
         message: localize('com_endpoint_preset_delete_error'),
         severity: NotificationSeverity.ERROR,
+        showIcon: true,
       });
     },
   });
@@ -99,12 +108,12 @@ export default function usePresets() {
   const updatePreset = useUpdatePresetMutation({
     onSuccess: (data, preset) => {
       const toastTitle = data.title ? `"${data.title}"` : localize('com_endpoint_preset_title');
-      let message = `${toastTitle} ${localize('com_endpoint_preset_saved')}`;
+      let message = `${toastTitle} ${localize('com_ui_saved')}`;
       if (data.defaultPreset && data.presetId !== _defaultPreset?.presetId) {
         message = `${toastTitle} ${localize('com_endpoint_preset_default')}`;
         setDefaultPreset(data);
-        newConversation({ preset: data });
-      } else if (preset?.defaultPreset === false) {
+        newConversation({ preset: data, disableParams: true });
+      } else if (preset.defaultPreset === false) {
         setDefaultPreset(null);
         message = `${toastTitle} ${localize('com_endpoint_preset_default_removed')}`;
       }
@@ -182,12 +191,23 @@ export default function usePresets() {
       endpointsConfig,
     });
 
+    newPreset.spec = null;
+    newPreset.iconURL = newPreset.iconURL ?? null;
+    newPreset.modelLabel = newPreset.modelLabel ?? null;
     const isModular = isCurrentModular && isNewModular && shouldSwitch;
+    const disableParams = newPreset.defaultPreset === true;
     if (isExistingConversation && isModular) {
       const currentConvo = getDefaultConversation({
         /* target endpointType is necessary to avoid endpoint mixing */
-        conversation: { ...(conversation ?? {}), endpointType: newEndpointType },
+        conversation: {
+          ...(conversation ?? {}),
+          spec: null,
+          iconURL: null,
+          modelLabel: null,
+          endpointType: newEndpointType,
+        },
         preset: { ...newPreset, endpointType: newEndpointType },
+        cleanInput: true,
       });
 
       /* We don't reset the latest message, only when changing settings mid-converstion */
@@ -196,11 +216,12 @@ export default function usePresets() {
         preset: currentConvo,
         keepLatestMessage: true,
         keepAddedConvos: true,
+        disableParams,
       });
       return;
     }
 
-    newConversation({ preset: newPreset, keepAddedConvos: isModular });
+    newConversation({ preset: newPreset, keepAddedConvos: isModular, disableParams });
   };
 
   const onChangePreset = (preset: TPreset) => {
@@ -211,10 +232,17 @@ export default function usePresets() {
   const clearAllPresets = () => deletePresetsMutation.mutate(undefined);
 
   const onDeletePreset = (preset: TPreset) => {
-    if (!confirm(localize('com_endpoint_preset_delete_confirm'))) {
+    setPresetToDelete(preset);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeletePreset = () => {
+    if (!presetToDelete) {
       return;
     }
-    deletePresetsMutation.mutate(preset);
+    deletePresetsMutation.mutate(presetToDelete);
+    setShowDeleteDialog(false);
+    setPresetToDelete(null);
   };
 
   const submitPreset = () => {
@@ -233,7 +261,7 @@ export default function usePresets() {
     if (!preset) {
       return;
     }
-    const fileName = filenamify(preset?.title || 'preset');
+    const fileName = filenamify(preset.title || 'preset');
     exportFromJSON({
       data: cleanupPreset({ preset }),
       fileName,
@@ -251,5 +279,9 @@ export default function usePresets() {
     onDeletePreset,
     submitPreset,
     exportPreset,
+    showDeleteDialog,
+    setShowDeleteDialog,
+    presetToDelete,
+    confirmDeletePreset,
   };
 }

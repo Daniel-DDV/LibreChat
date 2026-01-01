@@ -1,13 +1,20 @@
 import * as Popover from '@radix-ui/react-popover';
+import { Spinner } from '@librechat/client';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import CancelledIcon from './CancelledIcon';
+import FinishedIcon from './FinishedIcon';
 import { cn } from '~/utils';
+
+const wrapperClass =
+  'progress-text-wrapper text-token-text-secondary relative -mt-[0.75px] h-5 w-full leading-5';
 
 const Wrapper = ({ popover, children }: { popover: boolean; children: React.ReactNode }) => {
   if (popover) {
     return (
-      <div className="text-token-text-secondary relative -mt-[0.75px] h-5 w-full leading-5">
+      <div className={wrapperClass}>
         <Popover.Trigger asChild>
           <div
-            className="absolute left-0 top-0 line-clamp-1 overflow-visible"
+            className="progress-text-content absolute left-0 top-0 overflow-visible whitespace-nowrap"
             style={{ opacity: 1, transform: 'none' }}
             data-projection-id="78"
           >
@@ -19,9 +26,9 @@ const Wrapper = ({ popover, children }: { popover: boolean; children: React.Reac
   }
 
   return (
-    <div className="text-token-text-secondary relative -mt-[0.75px] h-5 w-full leading-5">
+    <div className={wrapperClass}>
       <div
-        className="absolute left-0 top-0 line-clamp-1 overflow-visible"
+        className="progress-text-content absolute left-0 top-0 overflow-visible whitespace-nowrap"
         style={{ opacity: 1, transform: 'none' }}
         data-projection-id="78"
       >
@@ -36,35 +43,66 @@ export default function ProgressText({
   onClick,
   inProgressText,
   finishedText,
+  authText,
   hasInput = true,
   popover = false,
+  isExpanded = false,
+  error = false,
 }: {
   progress: number;
-  onClick: () => void;
+  onClick?: () => void;
   inProgressText: string;
   finishedText: string;
+  authText?: string;
   hasInput?: boolean;
   popover?: boolean;
+  isExpanded?: boolean;
+  error?: boolean;
 }) {
+  const getText = () => {
+    if (error) {
+      return finishedText;
+    }
+    if (progress < 1) {
+      return authText ?? inProgressText;
+    }
+    return finishedText;
+  };
+
+  const getIcon = () => {
+    if (error) {
+      return <CancelledIcon />;
+    }
+    if (progress < 1) {
+      return <Spinner />;
+    }
+    return <FinishedIcon />;
+  };
+
+  const text = getText();
+  const icon = getIcon();
+  const showShimmer = progress < 1 && !error;
+
   return (
     <Wrapper popover={popover}>
       <button
         type="button"
-        className={cn('inline-flex items-center gap-1', hasInput ? '' : 'pointer-events-none')}
+        className={cn(
+          'inline-flex w-full items-center gap-2',
+          hasInput ? '' : 'pointer-events-none',
+        )}
         disabled={!hasInput}
-        onClick={onClick}
+        onClick={hasInput ? onClick : undefined}
+        aria-expanded={hasInput ? isExpanded : undefined}
       >
-        {progress < 1 ? inProgressText : finishedText}
-        <svg width="16" height="17" viewBox="0 0 16 17" fill="none">
-          <path
-            className={hasInput ? '' : 'stroke-transparent'}
-            d="M11.3346 7.83203L8.00131 11.1654L4.66797 7.83203"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        {icon}
+        <span className={showShimmer ? 'shimmer' : ''}>{text}</span>
+        {hasInput &&
+          (isExpanded ? (
+            <ChevronUp className="size-4 shrink-0 translate-y-[1px]" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="size-4 shrink-0 translate-y-[1px]" aria-hidden="true" />
+          ))}
       </button>
     </Wrapper>
   );

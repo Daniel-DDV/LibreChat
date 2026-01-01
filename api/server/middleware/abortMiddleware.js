@@ -1,49 +1,111 @@
-const { isAssistantsEndpoint } = require('librechat-data-provider');
-const { sendMessage, sendError, countTokens, isEnabled } = require('~/server/utils');
+const { logger } = require('@librechat/data-schemas');
+const {
+  countTokens,
+  isEnabled,
+  sendEvent,
+  GenerationJobManager,
+  sanitizeMessageForTransmit,
+} = require('@librechat/api');
+const { isAssistantsEndpoint, ErrorTypes } = require('librechat-data-provider');
 const { truncateText, smartTruncateText } = require('~/app/clients/prompts');
 const clearPendingReq = require('~/cache/clearPendingReq');
-const abortControllers = require('./abortControllers');
+const { sendError } = require('~/server/middleware/error');
+const { spendTokens } = require('~/models/spendTokens');
 const { saveMessage, getConvo } = require('~/models');
-const spendTokens = require('~/models/spendTokens');
 const { abortRun } = require('./abortRun');
-const { logger } = require('~/config');
 
+/**
+ * Abort an active message generation.
+ * Uses GenerationJobManager for all agent requests.
+ * Since streamId === conversationId, we can directly abort by conversationId.
+ */
 async function abortMessage(req, res) {
-  let { abortKey, endpoint } = req.body;
+  const { abortKey, endpoint } = req.body;
 
   if (isAssistantsEndpoint(endpoint)) {
     return await abortRun(req, res);
   }
 
   const conversationId = abortKey?.split(':')?.[0] ?? req.user.id;
+  const userId = req.user.id;
 
-  if (!abortControllers.has(abortKey) && abortControllers.has(conversationId)) {
-    abortKey = conversationId;
+  // Use GenerationJobManager to abort the job (streamId === conversationId)
+  const abortResult = await GenerationJobManager.abortJob(conversationId);
+
+  if (!abortResult.success) {
+    if (!res.headersSent) {
+      return res.status(204).send({ message: 'Request not found' });
+    }
+    return;
   }
 
-  if (!abortControllers.has(abortKey) && !res.headersSent) {
-    return res.status(204).send({ message: 'Request not found' });
-  }
+  const { jobData, content, text } = abortResult;
 
-  const { abortController } = abortControllers.get(abortKey) ?? {};
-  if (!abortController) {
-    return res.status(204).send({ message: 'Request not found' });
-  }
-  const finalEvent = await abortController.abortCompletion();
-  logger.info('[abortMessage] Aborted request', { abortKey });
-  abortControllers.delete(abortKey);
+  // Count tokens and spend them
+  const completionTokens = await countTokens(text);
+  const promptTokens = jobData?.promptTokens ?? 0;
 
-  if (res.headersSent && finalEvent) {
-    return sendMessage(res, finalEvent);
+  const responseMessage = {
+    messageId: jobData?.responseMessageId,
+    parentMessageId: jobData?.userMessage?.messageId,
+    conversationId: jobData?.conversationId,
+    content,
+    text,
+    sender: jobData?.sender ?? 'AI',
+    finish_reason: 'incomplete',
+    endpoint: jobData?.endpoint,
+    iconURL: jobData?.iconURL,
+    model: jobData?.model,
+    unfinished: false,
+    error: false,
+    isCreatedByUser: false,
+    tokenCount: completionTokens,
+  };
+
+  await spendTokens(
+    { ...responseMessage, context: 'incomplete', user: userId },
+    { promptTokens, completionTokens },
+  );
+
+  await saveMessage(
+    req,
+    { ...responseMessage, user: userId },
+    { context: 'api/server/middleware/abortMiddleware.js' },
+  );
+
+  // Get conversation for title
+  const conversation = await getConvo(userId, conversationId);
+
+  const finalEvent = {
+    title: conversation && !conversation.title ? null : conversation?.title || 'New Chat',
+    final: true,
+    conversation,
+    requestMessage: jobData?.userMessage
+      ? sanitizeMessageForTransmit({
+          messageId: jobData.userMessage.messageId,
+          parentMessageId: jobData.userMessage.parentMessageId,
+          conversationId: jobData.userMessage.conversationId,
+          text: jobData.userMessage.text,
+          isCreatedByUser: true,
+        })
+      : null,
+    responseMessage,
+  };
+
+  logger.debug(
+    `[abortMessage] ID: ${userId} | ${req.user.email} | Aborted request: ${conversationId}`,
+  );
+
+  if (res.headersSent) {
+    return sendEvent(res, finalEvent);
   }
 
   res.setHeader('Content-Type', 'application/json');
-
   res.send(JSON.stringify(finalEvent));
 }
 
-const handleAbort = () => {
-  return async (req, res) => {
+const handleAbort = function () {
+  return async function (req, res) {
     try {
       if (isEnabled(process.env.LIMIT_CONCURRENT_MESSAGES)) {
         await clearPendingReq({ userId: req.user.id });
@@ -55,88 +117,14 @@ const handleAbort = () => {
   };
 };
 
-const createAbortController = (req, res, getAbortData, getReqData) => {
-  const abortController = new AbortController();
-  const { endpointOption } = req.body;
-
-  abortController.getAbortData = function () {
-    return getAbortData();
-  };
-
-  /**
-   * @param {TMessage} userMessage
-   * @param {string} responseMessageId
-   */
-  const onStart = (userMessage, responseMessageId) => {
-    sendMessage(res, { message: userMessage, created: true });
-    const abortKey = userMessage?.conversationId ?? req.user.id;
-    const prevRequest = abortControllers.get(abortKey);
-    if (prevRequest && prevRequest?.abortController) {
-      const data = prevRequest.abortController.getAbortData();
-      getReqData({ userMessage: data?.userMessage });
-      const addedAbortKey = `${abortKey}:${responseMessageId}`;
-      abortControllers.set(addedAbortKey, { abortController, ...endpointOption });
-      res.on('finish', function () {
-        abortControllers.delete(addedAbortKey);
-      });
-      return;
-    }
-    abortControllers.set(abortKey, { abortController, ...endpointOption });
-
-    res.on('finish', function () {
-      abortControllers.delete(abortKey);
-    });
-  };
-
-  abortController.abortCompletion = async function () {
-    abortController.abort();
-    const { conversationId, userMessage, userMessagePromise, promptTokens, ...responseData } =
-      getAbortData();
-    const completionTokens = await countTokens(responseData?.text ?? '');
-    const user = req.user.id;
-
-    const responseMessage = {
-      ...responseData,
-      conversationId,
-      finish_reason: 'incomplete',
-      endpoint: endpointOption.endpoint,
-      iconURL: endpointOption.iconURL,
-      model: endpointOption.modelOptions.model,
-      unfinished: false,
-      error: false,
-      isCreatedByUser: false,
-      tokenCount: completionTokens,
-    };
-
-    await spendTokens(
-      { ...responseMessage, context: 'incomplete', user },
-      { promptTokens, completionTokens },
-    );
-
-    saveMessage({ ...responseMessage, user });
-
-    let conversation;
-    if (userMessagePromise) {
-      const resolved = await userMessagePromise;
-      conversation = resolved?.conversation;
-    }
-
-    if (!conversation) {
-      conversation = await getConvo(req.user.id, conversationId);
-    }
-
-    return {
-      title: conversation && !conversation.title ? null : conversation?.title || 'New Chat',
-      final: true,
-      conversation,
-      requestMessage: userMessage,
-      responseMessage: responseMessage,
-    };
-  };
-
-  return { abortController, onStart };
-};
-
+/**
+ * Handle abort errors during generation.
+ * @param {ServerResponse} res
+ * @param {ServerRequest} req
+ * @param {Error | unknown} error
+ * @param {Partial<TMessage> & { partialText?: string }} data
+ * @returns {Promise<void>}
+ */
 const handleAbortError = async (res, req, error, data) => {
   if (error?.message?.includes('base64')) {
     logger.error('[handleAbortError] Error in base64 encoding', {
@@ -147,7 +135,7 @@ const handleAbortError = async (res, req, error, data) => {
   } else {
     logger.error('[handleAbortError] AI response error; aborting request:', error);
   }
-  const { sender, conversationId, messageId, parentMessageId, partialText } = data;
+  const { sender, conversationId, messageId, parentMessageId, userMessageId, partialText } = data;
 
   if (error.stack && error.stack.includes('google')) {
     logger.warn(
@@ -155,20 +143,41 @@ const handleAbortError = async (res, req, error, data) => {
     );
   }
 
-  const errorText = error?.message?.includes('"type"')
+  let errorText = error?.message?.includes('"type"')
     ? error.message
     : 'An error occurred while processing your request. Please contact the Admin.';
 
+  if (error?.type === ErrorTypes.INVALID_REQUEST) {
+    errorText = `{"type":"${ErrorTypes.INVALID_REQUEST}"}`;
+  }
+
+  if (error?.message?.includes("does not support 'system'")) {
+    errorText = `{"type":"${ErrorTypes.NO_SYSTEM_MESSAGES}"}`;
+  }
+
+  /**
+   * @param {string} partialText
+   * @returns {Promise<void>}
+   */
   const respondWithError = async (partialText) => {
+    const endpointOption = req.body?.endpointOption;
     let options = {
       sender,
       messageId,
       conversationId,
       parentMessageId,
       text: errorText,
-      shouldSaveMessage: true,
       user: req.user.id,
+      spec: endpointOption?.spec,
+      iconURL: endpointOption?.iconURL,
+      modelLabel: endpointOption?.modelLabel,
+      shouldSaveMessage: userMessageId != null,
+      model: endpointOption?.modelOptions?.model || req.body?.model,
     };
+
+    if (req.body?.agent_id) {
+      options.agent_id = req.body.agent_id;
+    }
 
     if (partialText) {
       options = {
@@ -179,15 +188,7 @@ const handleAbortError = async (res, req, error, data) => {
       };
     }
 
-    const callback = async () => {
-      if (abortControllers.has(conversationId)) {
-        const { abortController } = abortControllers.get(conversationId);
-        abortController.abort();
-        abortControllers.delete(conversationId);
-      }
-    };
-
-    await sendError(res, options, callback);
+    await sendError(req, res, options);
   };
 
   if (partialText && partialText.length > 5) {
@@ -204,6 +205,5 @@ const handleAbortError = async (res, req, error, data) => {
 
 module.exports = {
   handleAbort,
-  createAbortController,
   handleAbortError,
 };

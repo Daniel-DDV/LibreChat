@@ -1,31 +1,44 @@
+import React from 'react';
 import { useRecoilState } from 'recoil';
-import { Dropdown } from '~/components/ui';
+import { Dropdown } from '@librechat/client';
 import { useLocalize } from '~/hooks';
 import store from '~/store';
 
-export default function EngineTTSDropdown() {
+interface EngineTTSDropdownProps {
+  external: boolean;
+}
+
+const EngineTTSDropdown: React.FC<EngineTTSDropdownProps> = ({ external }) => {
   const localize = useLocalize();
-  const [endpointTTS, setEndpointTTS] = useRecoilState<string>(store.endpointTTS);
-  const endpointOptions = [
-    { value: 'browser', display: localize('com_nav_browser') },
-    { value: 'external', display: localize('com_nav_external') },
-  ];
+  const [engineTTS, setEngineTTS] = useRecoilState<string>(store.engineTTS);
+
+  const endpointOptions = external
+    ? [
+        { value: 'browser', label: localize('com_nav_browser') },
+        { value: 'external', label: localize('com_nav_external') },
+      ]
+    : [{ value: 'browser', label: localize('com_nav_browser') }];
 
   const handleSelect = (value: string) => {
-    setEndpointTTS(value);
+    setEngineTTS(value);
   };
+
+  const labelId = 'engine-tts-dropdown-label';
 
   return (
     <div className="flex items-center justify-between">
-      <div>{localize('com_nav_engine')}</div>
+      <div id={labelId}>{localize('com_nav_engine')}</div>
       <Dropdown
-        value={endpointTTS}
+        value={engineTTS}
         onChange={handleSelect}
         options={endpointOptions}
-        width={180}
-        position={'left'}
+        sizeClasses="w-[180px]"
         testId="EngineTTSDropdown"
+        className="z-50"
+        aria-labelledby={labelId}
       />
     </div>
   );
-}
+};
+
+export default EngineTTSDropdown;
