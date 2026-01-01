@@ -96,6 +96,14 @@ html {
   --border-medium: var(--gray-300);
   --border-heavy: var(--gray-400);
   --border-xheavy: var(--gray-500);
+  --status-surface: #0b0b0b;
+  --status-border: #2a2a2a;
+  --status-dim: #6b6b6b;
+  --status-beam-base: #5f5f5f;
+  --status-beam-hot: #fefefe;
+  --status-orb: #fefefe;
+  --status-orb-shadow: rgba(255, 255, 255, 0.45);
+  --status-glow: rgba(255, 255, 255, 0.35);
   /* These are test styles */
 
   --background: 0 0% 100%;
@@ -156,6 +164,14 @@ html {
   --border-medium: var(--gray-600);
   --border-heavy: var(--gray-500);
   --border-xheavy: var(--gray-400);
+  --status-surface: #0e0e0e;
+  --status-border: #2d2d2d;
+  --status-dim: #7a7a7a;
+  --status-beam-base: #6a6a6a;
+  --status-beam-hot: #f5f5f5;
+  --status-orb: #f5f5f5;
+  --status-orb-shadow: rgba(255, 255, 255, 0.4);
+  --status-glow: rgba(255, 255, 255, 0.3);
   /* These are test styles */
 
   --background: 0 0% 7%;
@@ -2929,10 +2945,10 @@ html {
 }
 
 .status-terminal {
-  border: 1px solid #222;
+  border: 1px solid var(--status-border);
   border-radius: 8px;
   padding: 8px 12px;
-  background-color: #000;
+  background-color: var(--status-surface);
 }
 
 .status-terminal--dock {
@@ -2964,18 +2980,18 @@ html {
   font-weight: 700;
   background: linear-gradient(
     90deg,
-    #555 0%,
-    #555 40%,
-    #fff 50%,
-    #555 60%,
-    #555 100%
+    var(--status-beam-base) 0%,
+    var(--status-beam-base) 40%,
+    var(--status-beam-hot) 50%,
+    var(--status-beam-base) 60%,
+    var(--status-beam-base) 100%
   );
   background-size: 200% auto;
   color: transparent;
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.35));
+  filter: drop-shadow(0 0 2px var(--status-glow));
   animation: status-beam 2s linear infinite;
 }
 
@@ -2983,14 +2999,14 @@ html {
   height: 10px;
   width: 10px;
   border-radius: 9999px;
-  background-color: #ffffff;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.45);
+  background-color: var(--status-orb);
+  box-shadow: 0 0 6px var(--status-orb-shadow);
   animation: pulseSize 1.25s ease-in-out infinite;
   flex-shrink: 0;
 }
 
 .status-dim {
-  color: #555;
+  color: var(--status-dim);
   font-weight: 400;
   white-space: nowrap;
 }
