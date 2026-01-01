@@ -14,6 +14,7 @@ type StatusLineProps = {
   message: TMessage;
   isSubmitting: boolean;
   index: number;
+  toolHint?: string | null;
 };
 
 function formatDuration(totalSeconds: number) {
@@ -23,14 +24,14 @@ function formatDuration(totalSeconds: number) {
   return `${minutes}m ${paddedSeconds}s`;
 }
 
-export default function StatusLine({ message, isSubmitting, index }: StatusLineProps) {
+export default function StatusLine({ message, isSubmitting, index, toolHint }: StatusLineProps) {
   const localize = useLocalize();
   const startRef = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const statusLine = useRecoilValue(store.statusLineByIndex(index));
 
   const toolStatusText = useMemo(() => {
-    const toolName = statusLine?.tool;
+    const toolName = statusLine?.tool ?? toolHint;
     if (!toolName) {
       return null;
     }
@@ -47,65 +48,71 @@ export default function StatusLine({ message, isSubmitting, index }: StatusLineP
       return localize('com_assistants_retrieval');
     }
     return null;
-  }, [localize, statusLine?.tool]);
+  }, [localize, statusLine?.tool, toolHint]);
+
+  const inProgressTool = useMemo(() => {
+    const parts: TMessageContentParts[] = Array.isArray(message?.content)
+      ? (message.content as TMessageContentParts[])
+      : [];
+
+    return (
+      parts.find((part) => {
+        if (!part || part.type !== ContentTypes.TOOL_CALL) {
+          return false;
+        }
+        const toolCall = part[ContentTypes.TOOL_CALL];
+        const progress = toolCall?.progress ?? 0;
+        return progress < 1;
+      }) ?? null
+    );
+  }, [message?.content]);
+
+  const isActive = isSubmitting || statusLine != null || inProgressTool != null;
 
   const statusText = useMemo(() => {
-    if (statusLine?.key) {
-      return localize(statusLine.key);
-    }
-
     if (toolStatusText) {
       return toolStatusText;
+    }
+
+    if (statusLine?.key && statusLine.key !== 'com_ui_generating') {
+      return localize(statusLine.key);
     }
 
     if (statusLine?.text) {
       return statusLine.text;
     }
 
-    const parts: TMessageContentParts[] = Array.isArray(message?.content)
-      ? (message.content as TMessageContentParts[])
-      : [];
-
-    const inProgressTool = parts.find((part) => {
-      if (!part || part.type !== ContentTypes.TOOL_CALL) {
-        return false;
-      }
-      const toolCall = part[ContentTypes.TOOL_CALL];
-      const progress = toolCall?.progress ?? 0;
-      return progress < 1;
-    });
-
     if (inProgressTool?.type === ContentTypes.TOOL_CALL) {
       const toolCall = inProgressTool[ContentTypes.TOOL_CALL];
       if (toolCall?.name === Tools.web_search) {
         return localize('com_ui_web_searching');
       }
-      if (toolCall?.name === Tools.execute_code) {
+      if (toolCall?.name === Tools.execute_code || toolCall?.name === Tools.code_interpreter) {
         return localize('com_assistants_code_interpreter');
       }
-      if (toolCall?.type === ToolCallTypes.FILE_SEARCH) {
+      if (toolCall?.name === Tools.file_search || toolCall?.type === ToolCallTypes.FILE_SEARCH) {
         return localize('com_assistants_file_search');
       }
-      if (toolCall?.type === ToolCallTypes.RETRIEVAL) {
+      if (toolCall?.name === Tools.retrieval || toolCall?.type === ToolCallTypes.RETRIEVAL) {
         return localize('com_assistants_retrieval');
       }
     }
 
-    return localize('com_ui_generating');
-  }, [message, localize, statusLine?.key, statusLine?.text, toolStatusText]);
+    return localize(statusLine?.key ?? 'com_ui_generating');
+  }, [inProgressTool, localize, statusLine?.key, statusLine?.text, toolStatusText]);
 
   useEffect(() => {
-    if (isSubmitting && startRef.current == null) {
+    if (isActive && startRef.current == null) {
       startRef.current = Date.now();
     }
-    if (!isSubmitting) {
+    if (!isActive) {
       startRef.current = null;
       setElapsedSeconds(0);
     }
-  }, [isSubmitting]);
+  }, [isActive]);
 
   useEffect(() => {
-    if (!isSubmitting) {
+    if (!isActive) {
       return undefined;
     }
 
@@ -121,7 +128,11 @@ export default function StatusLine({ message, isSubmitting, index }: StatusLineP
     const interval = window.setInterval(tick, 1000);
 
     return () => window.clearInterval(interval);
-  }, [isSubmitting]);
+  }, [isActive]);
+
+  if (!isActive) {
+    return null;
+  }
 
   return (
     <div className="mt-2 w-full">

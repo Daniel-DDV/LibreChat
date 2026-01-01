@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
-import { getConfigDefaults } from 'librechat-data-provider';
+import { Constants, ContentTypes, Tools, getConfigDefaults } from 'librechat-data-provider';
 import type { TMessageContentParts } from 'librechat-data-provider';
 import type { TMessageProps, TMessageIcon } from '~/common';
 import { useMessageHelpers, useLocalize, useAttachments, useContentMetadata } from '~/hooks';
@@ -16,6 +16,7 @@ import SubRow from './SubRow';
 import StatusLine from './StatusLine';
 import { cn, getMessageAriaLabel } from '~/utils';
 import store from '~/store';
+import { ephemeralAgentByConvoId } from '~/store/agents';
 
 const defaultInterface = getConfigDefaults().interface;
 
@@ -46,12 +47,51 @@ export default function Message(props: TMessageProps) {
 
   const fontSize = useAtomValue(fontSizeAtom);
   const maximizeChatSpace = useRecoilValue(store.maximizeChatSpace);
+  const statusLineState = useRecoilValue(store.statusLineByIndex(index));
+  const ephemeralAgent = useRecoilValue(
+    ephemeralAgentByConvoId(conversation?.conversationId ?? Constants.NEW_CONVO),
+  );
   const { children, messageId = null, isCreatedByUser } = message ?? {};
   const interfaceConfig = useMemo(
     () => startupConfig?.interface ?? defaultInterface,
     [startupConfig],
   );
   const showStatusLine = interfaceConfig?.statusLine === true;
+  const toolHint = useMemo(() => {
+    if (!ephemeralAgent) {
+      return null;
+    }
+    if (ephemeralAgent.file_search) {
+      return Tools.file_search;
+    }
+    if (ephemeralAgent.web_search) {
+      return Tools.web_search;
+    }
+    if (ephemeralAgent.execute_code) {
+      return Tools.execute_code;
+    }
+    return null;
+  }, [ephemeralAgent]);
+  const hasActiveToolCall = useMemo(() => {
+    const parts: TMessageContentParts[] = Array.isArray(message?.content)
+      ? (message.content as TMessageContentParts[])
+      : [];
+
+    return parts.some((part) => {
+      if (!part || part.type !== ContentTypes.TOOL_CALL) {
+        return false;
+      }
+      const toolCall = part[ContentTypes.TOOL_CALL];
+      const progress = toolCall?.progress ?? 0;
+      return progress < 1;
+    });
+  }, [message?.content]);
+
+  const showActiveStatusLine =
+    showStatusLine &&
+    isLast &&
+    !isCreatedByUser &&
+    (isSubmitting || statusLineState != null || hasActiveToolCall);
 
   const name = useMemo(() => {
     let result = '';
@@ -157,12 +197,15 @@ export default function Message(props: TMessageProps) {
                     content={message.content as Array<TMessageContentParts | undefined>}
                   />
                 </div>
-                {isLast && isSubmitting && !isCreatedByUser ? (
-                  showStatusLine ? (
-                    <StatusLine message={message} isSubmitting={isSubmitting} index={index} />
-                  ) : (
-                    <div className="mt-1 h-[27px] bg-transparent" />
-                  )
+                {showActiveStatusLine ? (
+                  <StatusLine
+                    message={message}
+                    isSubmitting={isSubmitting}
+                    index={index}
+                    toolHint={toolHint}
+                  />
+                ) : isLast && !isCreatedByUser && isSubmitting ? (
+                  <div className="mt-1 h-[27px] bg-transparent" />
                 ) : (
                   <SubRow classes="text-xs">
                     <SiblingSwitch

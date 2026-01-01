@@ -1,18 +1,30 @@
 import { useCallback, useMemo, memo } from 'react';
 import { useAtomValue } from 'jotai';
 import { useRecoilValue } from 'recoil';
-import type { TMessage, TMessageContentParts } from 'librechat-data-provider';
+import {
+  Constants,
+  ContentTypes,
+  Tools,
+  getConfigDefaults,
+  type TMessage,
+  type TMessageContentParts,
+} from 'librechat-data-provider';
 import type { TMessageProps, TMessageIcon } from '~/common';
 import { useAttachments, useLocalize, useMessageActions, useContentMetadata } from '~/hooks';
+import { useGetStartupConfig } from '~/data-provider';
 import ContentParts from '~/components/Chat/Messages/Content/ContentParts';
 import PlaceholderRow from '~/components/Chat/Messages/ui/PlaceholderRow';
 import SiblingSwitch from '~/components/Chat/Messages/SiblingSwitch';
 import HoverButtons from '~/components/Chat/Messages/HoverButtons';
 import MessageIcon from '~/components/Chat/Messages/MessageIcon';
 import SubRow from '~/components/Chat/Messages/SubRow';
+import StatusLine from '~/components/Chat/Messages/StatusLine';
 import { cn, getMessageAriaLabel } from '~/utils';
 import { fontSizeAtom } from '~/store/fontSize';
 import store from '~/store';
+import { ephemeralAgentByConvoId } from '~/store/agents';
+
+const defaultInterface = getConfigDefaults().interface;
 
 type ContentRenderProps = {
   message?: TMessage;
@@ -56,8 +68,13 @@ const ContentRender = memo(
       currentEditId,
       setCurrentEditId,
     });
+    const { data: startupConfig } = useGetStartupConfig();
     const fontSize = useAtomValue(fontSizeAtom);
     const maximizeChatSpace = useRecoilValue(store.maximizeChatSpace);
+    const statusLineState = useRecoilValue(store.statusLineByIndex(index));
+    const ephemeralAgent = useRecoilValue(
+      ephemeralAgentByConvoId(conversation?.conversationId ?? Constants.NEW_CONVO),
+    );
 
     const handleRegenerateMessage = useCallback(() => regenerateMessage(), [regenerateMessage]);
     const isLast = useMemo(
@@ -69,6 +86,46 @@ const ContentRender = memo(
     const isLatestMessage = msg?.messageId === latestMessage?.messageId;
     /** Only pass isSubmitting to the latest message to prevent unnecessary re-renders */
     const effectiveIsSubmitting = isLatestMessage ? isSubmitting : false;
+    const interfaceConfig = useMemo(
+      () => startupConfig?.interface ?? defaultInterface,
+      [startupConfig],
+    );
+    const showStatusLine = interfaceConfig?.statusLine === true;
+    const toolHint = useMemo(() => {
+      if (!ephemeralAgent) {
+        return null;
+      }
+      if (ephemeralAgent.file_search) {
+        return Tools.file_search;
+      }
+      if (ephemeralAgent.web_search) {
+        return Tools.web_search;
+      }
+      if (ephemeralAgent.execute_code) {
+        return Tools.execute_code;
+      }
+      return null;
+    }, [ephemeralAgent]);
+    const hasActiveToolCall = useMemo(() => {
+      const parts: TMessageContentParts[] = Array.isArray(msg?.content)
+        ? (msg.content as TMessageContentParts[])
+        : [];
+
+      return parts.some((part) => {
+        if (!part || part.type !== ContentTypes.TOOL_CALL) {
+          return false;
+        }
+        const toolCall = part[ContentTypes.TOOL_CALL];
+        const progress = toolCall?.progress ?? 0;
+        return progress < 1;
+      });
+    }, [msg?.content]);
+
+    const isLeafAssistant = hasNoChildren && !msg.isCreatedByUser;
+    const showActiveStatusLine =
+      showStatusLine &&
+      isLeafAssistant &&
+      (isSubmitting || statusLineState != null || hasActiveToolCall);
 
     const iconData: TMessageIcon = useMemo(
       () => ({
@@ -162,7 +219,14 @@ const ContentRender = memo(
                 content={msg.content as Array<TMessageContentParts | undefined>}
               />
             </div>
-            {hasNoChildren && effectiveIsSubmitting ? (
+            {showActiveStatusLine ? (
+              <StatusLine
+                message={msg}
+                isSubmitting={isSubmitting}
+                index={index}
+                toolHint={toolHint}
+              />
+            ) : hasNoChildren && effectiveIsSubmitting ? (
               <PlaceholderRow />
             ) : (
               <SubRow classes="text-xs">
