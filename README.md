@@ -46,6 +46,9 @@
   </a>
 </p>
 
+## Repo Map (Project Maintainers)
+
+See `REPOS.md` for the local paths and canonical repositories used in this deployment.
 
 # ✨ Features
 
