@@ -50,6 +50,12 @@
 
 See `REPOS.md` for the local paths and canonical repositories used in this deployment.
 
+## EduGPT V3 (Deployment Notes)
+
+- EduGPT Student/Docent/GovGPT run via custom endpoints defined in `librechat.yaml`.
+- Docent chat shows quick actions for AI-resilient assessment templates and AI-literacy workflows.
+- Critique-prompt frequency is controlled in the EduGPT proxy (policy file + optional cohort/course headers).
+
 # ✨ Features
 
 - 🖥️ **UI & Experience** inspired by ChatGPT with enhanced design and features
@@ -111,6 +117,7 @@ See `REPOS.md` for the local paths and canonical repositories used in this deplo
 
 - 🎨 **Customizable Interface**:  
   - Customizable Dropdown & Interface that adapts to both power users and newcomers
+  - Optional tool status line with live progress (`interface.statusLine`, `interface.statusLinePlacement`)
 
 - 🗣️ **Speech & Audio**:  
   - Chat hands-free with Speech-to-Text and Text-to-Speech  
