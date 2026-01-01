@@ -53,6 +53,13 @@ const ResumableAgentController = async (req, res, next, initializeClient, addTit
   const conversationId =
     !reqConversationId || reqConversationId === 'new' ? crypto.randomUUID() : reqConversationId;
   const streamId = conversationId;
+  // Keep request body in sync so downstream header placeholders resolve correctly.
+  if (!req.body.conversationId || req.body.conversationId === 'new') {
+    req.body.conversationId = conversationId;
+  }
+  if (req.body.message && !req.body.message.conversationId) {
+    req.body.message.conversationId = conversationId;
+  }
 
   let client = null;
 
@@ -396,6 +403,13 @@ const _LegacyAgentController = async (req, res, next, initializeClient, addTitle
   const conversationId =
     !reqConversationId || reqConversationId === 'new' ? crypto.randomUUID() : reqConversationId;
   const streamId = conversationId;
+  // Keep request body in sync so downstream header placeholders resolve correctly.
+  if (!req.body.conversationId || req.body.conversationId === 'new') {
+    req.body.conversationId = conversationId;
+  }
+  if (req.body.message && !req.body.message.conversationId) {
+    req.body.message.conversationId = conversationId;
+  }
 
   let userMessage;
   let userMessageId;
