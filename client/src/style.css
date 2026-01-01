@@ -2935,7 +2935,15 @@ html {
   background-color: #000;
 }
 
-.status-line-active .status-terminal {
+.status-terminal--dock {
+  width: 100%;
+}
+
+.status-dock {
+  padding: 0 1.25rem 0.75rem;
+}
+
+.status-line-aligned .status-terminal {
   margin-left: calc(-1 * (1.5rem + 0.75rem));
   width: calc(100% + 1.5rem + 0.75rem);
 }

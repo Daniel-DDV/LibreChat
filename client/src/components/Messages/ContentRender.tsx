@@ -91,6 +91,7 @@ const ContentRender = memo(
       [startupConfig],
     );
     const showStatusLine = interfaceConfig?.statusLine === true;
+    const statusLinePlacement = interfaceConfig?.statusLinePlacement ?? 'inline';
     const toolHint = useMemo(() => {
       if (!ephemeralAgent) {
         return null;
@@ -121,12 +122,14 @@ const ContentRender = memo(
       });
     }, [msg?.content]);
 
+    const { hasParallelContent } = useContentMetadata(msg);
     const isLeafAssistant = hasNoChildren && !msg.isCreatedByUser;
-    const showActiveStatusLine =
+    const statusLineActive =
       showStatusLine &&
       isLeafAssistant &&
       (isSubmitting || statusLineState != null || hasActiveToolCall);
-    const showAlignedStatusLine = showActiveStatusLine && !hasParallelContent;
+    const showInlineStatusLine = statusLineActive && statusLinePlacement !== 'dock';
+    const showAlignedStatusLine = showInlineStatusLine && !hasParallelContent;
 
     const iconData: TMessageIcon = useMemo(
       () => ({
@@ -146,8 +149,6 @@ const ContentRender = memo(
         msg?.isCreatedByUser,
       ],
     );
-
-    const { hasParallelContent } = useContentMetadata(msg);
 
     if (!msg) {
       return null;
@@ -181,7 +182,8 @@ const ContentRender = memo(
           baseClasses.chat,
           conditionalClasses.focus,
           'message-render',
-          showAlignedStatusLine && 'status-line-active',
+          statusLineActive && 'status-line-active',
+          showAlignedStatusLine && 'status-line-aligned',
         )}
       >
         {!hasParallelContent && (
@@ -221,14 +223,14 @@ const ContentRender = memo(
                 content={msg.content as Array<TMessageContentParts | undefined>}
               />
             </div>
-            {showActiveStatusLine ? (
+            {showInlineStatusLine ? (
               <StatusLine
                 message={msg}
                 isSubmitting={isSubmitting}
                 index={index}
                 toolHint={toolHint}
               />
-            ) : hasNoChildren && effectiveIsSubmitting ? (
+            ) : hasNoChildren && effectiveIsSubmitting && statusLinePlacement !== 'dock' ? (
               <PlaceholderRow />
             ) : (
               <SubRow classes="text-xs">

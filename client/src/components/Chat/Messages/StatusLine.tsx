@@ -9,6 +9,7 @@ import {
 } from 'librechat-data-provider';
 import { useLocalize } from '~/hooks';
 import store from '~/store';
+import { cn } from '~/utils';
 
 const MAX_STATUS_DETAIL_CHARS = 48;
 
@@ -102,10 +103,11 @@ function buildStatusLine(base: string, detail?: string | null) {
 }
 
 type StatusLineProps = {
-  message: TMessage;
+  message?: TMessage | null;
   isSubmitting: boolean;
   index: number;
   toolHint?: string | null;
+  variant?: 'inline' | 'dock';
 };
 
 function formatDuration(totalSeconds: number) {
@@ -115,7 +117,13 @@ function formatDuration(totalSeconds: number) {
   return `${minutes}m ${paddedSeconds}s`;
 }
 
-export default function StatusLine({ message, isSubmitting, index, toolHint }: StatusLineProps) {
+export default function StatusLine({
+  message,
+  isSubmitting,
+  index,
+  toolHint,
+  variant = 'inline',
+}: StatusLineProps) {
   const localize = useLocalize();
   const startRef = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -290,8 +298,8 @@ export default function StatusLine({ message, isSubmitting, index, toolHint }: S
   }
 
   return (
-    <div className="mt-2 w-full">
-      <div className="status-terminal">
+    <div className={cn('w-full', variant === 'inline' ? 'mt-2' : '')}>
+      <div className={cn('status-terminal', variant === 'dock' && 'status-terminal--dock')}>
         <div className="status-line">
           <span className="status-beam">
             <span className="status-orb" aria-hidden="true" />

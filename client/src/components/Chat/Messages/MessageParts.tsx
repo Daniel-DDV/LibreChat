@@ -57,6 +57,7 @@ export default function Message(props: TMessageProps) {
     [startupConfig],
   );
   const showStatusLine = interfaceConfig?.statusLine === true;
+  const statusLinePlacement = interfaceConfig?.statusLinePlacement ?? 'inline';
   const toolHint = useMemo(() => {
     if (!ephemeralAgent) {
       return null;
@@ -87,12 +88,14 @@ export default function Message(props: TMessageProps) {
     });
   }, [message?.content]);
 
-  const showActiveStatusLine =
+  const { hasParallelContent } = useContentMetadata(message);
+  const statusLineActive =
     showStatusLine &&
     isLast &&
     !isCreatedByUser &&
     (isSubmitting || statusLineState != null || hasActiveToolCall);
-  const showAlignedStatusLine = showActiveStatusLine && !hasParallelContent;
+  const showInlineStatusLine = statusLineActive && statusLinePlacement !== 'dock';
+  const showAlignedStatusLine = showInlineStatusLine && !hasParallelContent;
 
   const name = useMemo(() => {
     let result = '';
@@ -126,8 +129,6 @@ export default function Message(props: TMessageProps) {
       message?.isCreatedByUser,
     ],
   );
-
-  const { hasParallelContent } = useContentMetadata(message);
 
   if (!message) {
     return null;
@@ -163,7 +164,8 @@ export default function Message(props: TMessageProps) {
               baseClasses.common,
               baseClasses.chat,
               'message-render',
-              showAlignedStatusLine && 'status-line-active',
+              statusLineActive && 'status-line-active',
+              showAlignedStatusLine && 'status-line-aligned',
             )}
           >
             {!hasParallelContent && (
@@ -203,14 +205,14 @@ export default function Message(props: TMessageProps) {
                     content={message.content as Array<TMessageContentParts | undefined>}
                   />
                 </div>
-                {showActiveStatusLine ? (
+                {showInlineStatusLine ? (
                   <StatusLine
                     message={message}
                     isSubmitting={isSubmitting}
                     index={index}
                     toolHint={toolHint}
                   />
-                ) : isLast && !isCreatedByUser && isSubmitting ? (
+                ) : isLast && !isCreatedByUser && isSubmitting && statusLinePlacement !== 'dock' ? (
                   <div className="mt-1 h-[27px] bg-transparent" />
                 ) : (
                   <SubRow classes="text-xs">
