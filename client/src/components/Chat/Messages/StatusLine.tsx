@@ -293,7 +293,10 @@ export default function StatusLine({ message, isSubmitting, index, toolHint }: S
     <div className="mt-2 w-full">
       <div className="status-terminal">
         <div className="status-line">
-          <span className="status-beam">&bull; {statusText}</span>
+          <span className="status-beam">
+            <span className="status-orb" aria-hidden="true" />
+            {statusText}
+          </span>
           <span className="status-dim">
             ({formatDuration(elapsedSeconds)} &bull; {interruptLabel})
           </span>

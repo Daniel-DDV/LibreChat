@@ -180,6 +180,7 @@ const ContentRender = memo(
           baseClasses.chat,
           conditionalClasses.focus,
           'message-render',
+          showActiveStatusLine && 'status-line-active',
         )}
       >
         {!hasParallelContent && (
