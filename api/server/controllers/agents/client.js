@@ -63,6 +63,34 @@ const omitTitleOptions = new Set([
   'additionalModelRequestFields',
 ]);
 
+const buildCurrentDateTimeLine = () => {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  const localTimestamp = [
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+  ].join(' ');
+  const offsetMinutes = -now.getTimezoneOffset();
+  const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+  const offsetTotalMinutes = Math.abs(offsetMinutes);
+  const offsetHours = pad(Math.floor(offsetTotalMinutes / 60));
+  const offsetMins = pad(offsetTotalMinutes % 60);
+  const offsetLabel = `UTC${offsetSign}${offsetHours}:${offsetMins}`;
+  return `Current date and time: ${localTimestamp} (${offsetLabel}) | UTC: ${now.toISOString()}`;
+};
+
+const prependCurrentDateTime = (systemContent) => {
+  if (typeof systemContent !== 'string' || systemContent.trim() === '') {
+    return buildCurrentDateTimeLine();
+  }
+
+  if (systemContent.includes('Current date and time')) {
+    return systemContent;
+  }
+
+  return `${buildCurrentDateTimeLine()}\n${systemContent}`;
+};
+
 /**
  * @param {ServerRequest} req
  * @param {Agent} agent
@@ -456,6 +484,8 @@ class AgentClient extends BaseClient {
       }
     }
 
+    systemContent = prependCurrentDateTime(systemContent);
+
     if (systemContent) {
       this.options.agent.instructions = systemContent;
     }
@@ -489,6 +519,8 @@ class AgentClient extends BaseClient {
     if (withoutKeys) {
       systemContent += `${memoryInstructions}\n\n# Existing memory about the user:\n${withoutKeys}`;
     }
+
+    systemContent = prependCurrentDateTime(systemContent);
 
     if (systemContent) {
       this.options.agent.instructions = systemContent;

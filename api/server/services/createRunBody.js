@@ -22,6 +22,32 @@ function getTimeStr(clientTimestamp) {
     : new Date().toTimeString().split(' ')[0];
 }
 
+function getNow(clientTimestamp) {
+  if (clientTimestamp) {
+    const parsed = new Date(clientTimestamp);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return new Date();
+}
+
+function buildCurrentDateTimeLine(clientTimestamp) {
+  const now = getNow(clientTimestamp);
+  const pad = (value) => String(value).padStart(2, '0');
+  const localTimestamp = [
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
+  ].join(' ');
+  const offsetMinutes = -now.getTimezoneOffset();
+  const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+  const offsetTotalMinutes = Math.abs(offsetMinutes);
+  const offsetHours = pad(Math.floor(offsetTotalMinutes / 60));
+  const offsetMins = pad(offsetTotalMinutes % 60);
+  const offsetLabel = `UTC${offsetSign}${offsetHours}:${offsetMins}`;
+  return `Current date and time: ${localTimestamp} (${offsetLabel}) | UTC: ${now.toISOString()}`;
+}
+
 /**
  * Creates the body object for a run request.
  *
@@ -50,18 +76,17 @@ const createRunBody = ({
 
   let systemInstructions = '';
 
-  if (endpointOption.assistant?.append_current_datetime) {
-    const dateStr = getDateStr(clientTimestamp);
-    const timeStr = getTimeStr(clientTimestamp);
-    systemInstructions = `Current date and time: ${dateStr} ${timeStr}\n`;
-  }
-
   if (promptPrefix) {
     systemInstructions += promptPrefix;
   }
 
   if (typeof endpointOption?.artifactsPrompt === 'string' && endpointOption.artifactsPrompt) {
     systemInstructions += `\n${endpointOption.artifactsPrompt}`;
+  }
+
+  const shouldAppendDatetime = endpointOption.assistant?.append_current_datetime !== false;
+  if (shouldAppendDatetime && !systemInstructions.includes('Current date and time')) {
+    systemInstructions = `${buildCurrentDateTimeLine(clientTimestamp)}\n${systemInstructions}`;
   }
 
   if (systemInstructions.trim()) {
