@@ -70,16 +70,16 @@ export default function StatusLine({ message, isSubmitting, index, toolHint }: S
   const isActive = isSubmitting || statusLine != null || inProgressTool != null;
 
   const statusText = useMemo(() => {
-    if (toolStatusText) {
-      return toolStatusText;
-    }
-
     if (statusLine?.key && statusLine.key !== 'com_ui_generating') {
       return localize(statusLine.key);
     }
 
     if (statusLine?.text) {
       return statusLine.text;
+    }
+
+    if (toolStatusText) {
+      return toolStatusText;
     }
 
     if (inProgressTool?.type === ContentTypes.TOOL_CALL) {
@@ -100,6 +100,8 @@ export default function StatusLine({ message, isSubmitting, index, toolHint }: S
 
     return localize(statusLine?.key ?? 'com_ui_generating');
   }, [inProgressTool, localize, statusLine?.key, statusLine?.text, toolStatusText]);
+
+  const interruptLabel = 'esc to interrupt';
 
   useEffect(() => {
     if (isActive && startRef.current == null) {
@@ -138,9 +140,9 @@ export default function StatusLine({ message, isSubmitting, index, toolHint }: S
     <div className="mt-2 w-full">
       <div className="status-terminal">
         <div className="status-line">
-          <span className="status-beam">{statusText}</span>
+          <span className="status-beam">&bull; {statusText}</span>
           <span className="status-dim">
-            ({formatDuration(elapsedSeconds)} - {localize('com_nav_stop_generating')})
+            ({formatDuration(elapsedSeconds)} &bull; {interruptLabel})
           </span>
         </div>
       </div>

@@ -72,6 +72,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     isSubmitting,
     filesLoading,
     newConversation,
+    stopGenerating,
     handleStopGenerating,
   } = useChatContext();
   const {
@@ -113,6 +114,23 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
     }
     textAreaRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (!isSubmitting || !showStopButton) {
+      return undefined;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== 'Escape') {
+        return;
+      }
+      event.preventDefault();
+      stopGenerating();
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isSubmitting, showStopButton, stopGenerating]);
 
   const handleFocusOrClick = useCallback(() => {
     if (isCollapsed) {

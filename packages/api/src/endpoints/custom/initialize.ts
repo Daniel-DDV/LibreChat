@@ -12,9 +12,20 @@ import { getOpenAIConfig } from '~/endpoints/openai/config';
 import { getCustomEndpointConfig } from '~/app/config';
 import { fetchModels } from '~/endpoints/models';
 import { isUserProvided, checkUserKeyExpiry } from '~/utils';
+import { createSafeUser, resolveHeaders } from '~/utils/env';
 import { standardCache } from '~/cache';
 
 const { PROXY } = process.env;
+
+function getHeaderValue(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  if (value == null) {
+    return undefined;
+  }
+  return String(value);
+}
 
 /**
  * Builds custom options from endpoint configuration
@@ -124,6 +135,23 @@ export async function initializeCustom({
     throw new Error(`${endpoint} Base URL not provided.`);
   }
 
+  const requestBody = (req.body ?? {}) as Record<string, unknown>;
+  const messageBody = (requestBody.message ?? {}) as Record<string, unknown>;
+  const argBody = (requestBody.arg ?? {}) as Record<string, unknown>;
+  const headerBody = {
+    conversationId:
+      requestBody.conversationId ??
+      messageBody.conversationId ??
+      argBody.conversationId ??
+      req.params?.conversationId ??
+      getHeaderValue(req.headers?.['x-librechat-body-conversationid']) ??
+      getHeaderValue(req.headers?.['x-librechat-conversation-id']) ??
+      getHeaderValue(req.headers?.['x-conversation-id']),
+    parentMessageId:
+      requestBody.parentMessageId ?? messageBody.parentMessageId ?? argBody.parentMessageId,
+    messageId: requestBody.messageId ?? messageBody.messageId ?? argBody.messageId,
+  };
+
   let endpointTokenConfig: EndpointTokenConfig | undefined;
 
   const userId = req.user?.id ?? '';
@@ -151,7 +179,19 @@ export async function initializeCustom({
     endpointTokenConfig = (await cache.get(tokenKey)) as EndpointTokenConfig | undefined;
   }
 
-  const customOptions = buildCustomOptions(endpointConfig, appConfig, endpointTokenConfig);
+  const resolvedHeaders =
+    endpointConfig.headers && typeof endpointConfig.headers === 'object'
+      ? resolveHeaders({
+          headers: endpointConfig.headers,
+          user: createSafeUser(req.user),
+          body: headerBody,
+        })
+      : undefined;
+  const customOptions = buildCustomOptions(
+    { ...endpointConfig, headers: resolvedHeaders ?? endpointConfig.headers },
+    appConfig,
+    endpointTokenConfig,
+  );
 
   const clientOptions: Record<string, unknown> = {
     reverseProxyUrl: baseURL ?? null,
