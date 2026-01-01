@@ -9,12 +9,58 @@ const { chromium } = require('playwright');
 const baseUrl = process.env.SMOKE_BASE_URL || 'http://localhost:3080';
 const email = process.env.SMOKE_EMAIL;
 const password = process.env.SMOKE_PASSWORD;
+const toolChoice = (process.env.SMOKE_TOOL || 'file').toLowerCase();
 const artifactDir =
   process.env.SMOKE_ARTIFACT_DIR || path.join(process.cwd(), 'scripts', 'ops', 'artifacts');
 
 if (!email || !password) {
   console.error('Missing SMOKE_EMAIL or SMOKE_PASSWORD.');
   process.exit(1);
+}
+
+async function openToolsMenu(page) {
+  const toolsButton = page.locator('#tools-dropdown-button');
+  await toolsButton.waitFor({ state: 'visible', timeout: 15000 });
+  await page.keyboard.press('Escape');
+  await toolsButton.click({ force: true });
+}
+
+async function toggleToolFromMenu(page, matcher) {
+  await openToolsMenu(page);
+  const menu = page.locator('#tools-dropdown-menu');
+  const menuItem = menu.getByRole('menuitem', { name: matcher });
+  if ((await menuItem.count()) > 0) {
+    await menuItem.first().click({ force: true });
+    await page.keyboard.press('Escape');
+    return true;
+  }
+
+  const textItem = menu.getByText(matcher, { exact: false });
+  if ((await textItem.count()) > 0) {
+    await textItem.first().click({ force: true });
+    await page.keyboard.press('Escape');
+    return true;
+  }
+
+  await page.keyboard.press('Escape');
+  return false;
+}
+
+async function ensureWebSearchEnabled(page) {
+  const webSearchBadge = page.getByRole('button', { name: /web search/i });
+  if ((await webSearchBadge.count()) > 0) {
+    const badge = webSearchBadge.first();
+    const pressed = await badge.getAttribute('aria-pressed');
+    if (pressed === 'false') {
+      await badge.click();
+    }
+    return;
+  }
+
+  const toggled = await toggleToolFromMenu(page, /web search/i);
+  if (!toggled) {
+    throw new Error('Web Search toggle not found.');
+  }
 }
 
 async function ensureFileSearchEnabled(page) {
@@ -28,26 +74,10 @@ async function ensureFileSearchEnabled(page) {
     return;
   }
 
-  const toolsButton = page.locator('#tools-dropdown-button');
-  await toolsButton.waitFor({ state: 'visible', timeout: 15000 });
-  await page.keyboard.press('Escape');
-  await toolsButton.click({ force: true });
-
-  const menuItem = page.getByRole('menuitem', { name: /file search/i });
-  if ((await menuItem.count()) > 0) {
-    await menuItem.first().click({ force: true });
-    await page.keyboard.press('Escape');
-    return;
+  const toggled = await toggleToolFromMenu(page, /file search/i);
+  if (!toggled) {
+    throw new Error('File Search toggle not found.');
   }
-
-  const textItem = page.getByText(/file search/i, { exact: false });
-  if ((await textItem.count()) > 0) {
-    await textItem.first().click({ force: true });
-    await page.keyboard.press('Escape');
-    return;
-  }
-
-  throw new Error('File Search toggle not found.');
 }
 
 async function selectFileSearchUpload(page) {
@@ -93,24 +123,53 @@ async function main() {
     await page.goto(`${baseUrl}/c/new`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     step = 'enable-tool';
-    await ensureFileSearchEnabled(page);
+    let toolUsed = toolChoice;
+    if (toolChoice === 'auto' || toolChoice === 'web') {
+      try {
+        await ensureWebSearchEnabled(page);
+        toolUsed = 'web';
+      } catch (error) {
+        if (toolChoice === 'web') {
+          throw error;
+        }
+        toolUsed = 'file';
+      }
+    }
+
+    if (toolUsed === 'file') {
+      await ensureFileSearchEnabled(page);
+    }
+
     await page.waitForTimeout(300);
 
     step = 'prepare-prompt';
-    const tempFilePath = path.join(os.tmpdir(), 'librechat-file-search-smoke.txt');
-    fs.writeFileSync(tempFilePath, 'File Search smoke test. Codeword: NIGHTRIDER-OK\n', 'utf8');
+    let prompt = '';
+    let statusPattern = /search|zoek/i;
 
-    await selectFileSearchUpload(page);
-    const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.setInputFiles(tempFilePath);
+    if (toolUsed === 'web') {
+      prompt = [
+        'I tried to find the LibreChat GitHub repo but I am stuck.',
+        '- I checked my bookmarks',
+        '- I looked at librechat.ai',
+        'Please use web_search to find the official LibreChat GitHub URL. Reply with the URL only.',
+      ].join('\n');
+      statusPattern = /web|zoek|search/i;
+    } else {
+      const tempFilePath = path.join(os.tmpdir(), 'librechat-file-search-smoke.txt');
+      fs.writeFileSync(tempFilePath, 'File Search smoke test. Codeword: NIGHTRIDER-OK\n', 'utf8');
 
-    const prompt = [
-      'I opened the attached file but I cannot find the codeword.',
-      '- I checked the first line',
-      '- I checked the last line',
-      'Please use file_search to find the codeword in the attached file. Reply with the codeword only.',
-    ].join('\n');
-    const statusPattern = /file|bestand|zoek|search/i;
+      await selectFileSearchUpload(page);
+      const fileInput = page.locator('input[type="file"]').first();
+      await fileInput.setInputFiles(tempFilePath);
+
+      prompt = [
+        'I opened the attached file but I cannot find the codeword.',
+        '- I checked the first line',
+        '- I checked the last line',
+        'Please use file_search to find the codeword in the attached file. Reply with the codeword only.',
+      ].join('\n');
+      statusPattern = /file|bestand|zoek|search/i;
+    }
 
     const sendButton = page.locator('#send-button');
     await sendButton.waitFor({ state: 'visible', timeout: 15000 });
