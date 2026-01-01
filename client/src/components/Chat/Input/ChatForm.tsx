@@ -24,6 +24,7 @@ import AttachFileChat from './Files/AttachFileChat';
 import FileFormChat from './Files/FileFormChat';
 import { cn, removeFocusRings } from '~/utils';
 import TextareaHeader from './TextareaHeader';
+import DocentToolbox from './DocentToolbox';
 import PromptsCommand from './PromptsCommand';
 import AudioRecorder from './AudioRecorder';
 import StatusDock from './StatusDock';
@@ -267,6 +268,7 @@ const ChatForm = memo(({ index = 0 }: { index?: number }) => {
             )}
           >
             <TextareaHeader addedConvo={addedConvo} setAddedConvo={setAddedConvo} />
+            <DocentToolbox conversation={conversation} submitPrompt={submitPrompt} />
             {/* WIP */}
             <EditBadges
               isEditingChatBadges={isEditingBadges}
