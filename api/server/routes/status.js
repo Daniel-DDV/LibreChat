@@ -27,7 +27,7 @@ const extractToken = (req) => {
   return null;
 };
 
-router.post('/', express.json({ limit: '16kb' }), (req, res) => {
+router.post('/', express.json({ limit: '16kb' }), async (req, res) => {
   if (STATUS_TOKEN) {
     const token = extractToken(req);
     if (!token || token !== STATUS_TOKEN) {
@@ -46,6 +46,27 @@ router.post('/', express.json({ limit: '16kb' }), (req, res) => {
     return res.status(400).json({ error: 'status_payload_required' });
   }
 
+  const job = await GenerationJobManager.getJob(conversationId);
+  const streamActive = Boolean(job);
+  const jobStatus = job?.status;
+  const shouldLogStreamCheck = status.phase === 'start' || status.clear === true;
+
+  if (!streamActive) {
+    logger.warn('[status] stream missing for status callback', {
+      conversationId,
+      phase: typeof status.phase === 'string' ? status.phase : undefined,
+      clear: status.clear === true,
+    });
+  } else if (shouldLogStreamCheck) {
+    logger.info('[status] stream check', {
+      conversationId,
+      streamActive,
+      jobStatus,
+      phase: typeof status.phase === 'string' ? status.phase : undefined,
+      clear: status.clear === true,
+    });
+  }
+
   GenerationJobManager.emitChunk(conversationId, {
     event: 'status',
     data: status,
@@ -53,6 +74,8 @@ router.post('/', express.json({ limit: '16kb' }), (req, res) => {
 
   logger.debug('[status] status update emitted', {
     conversationId,
+    streamActive,
+    jobStatus,
     clear: status.clear === true,
     hasText: typeof status.text === 'string',
     phase: typeof status.phase === 'string' ? status.phase : undefined,
