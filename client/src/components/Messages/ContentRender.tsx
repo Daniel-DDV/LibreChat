@@ -126,6 +126,7 @@ const ContentRender = memo(
       showStatusLine &&
       isLeafAssistant &&
       (isSubmitting || statusLineState != null || hasActiveToolCall);
+    const showAlignedStatusLine = showActiveStatusLine && !hasParallelContent;
 
     const iconData: TMessageIcon = useMemo(
       () => ({
@@ -180,7 +181,7 @@ const ContentRender = memo(
           baseClasses.chat,
           conditionalClasses.focus,
           'message-render',
-          showActiveStatusLine && 'status-line-active',
+          showAlignedStatusLine && 'status-line-active',
         )}
       >
         {!hasParallelContent && (

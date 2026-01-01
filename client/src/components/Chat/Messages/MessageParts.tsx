@@ -92,6 +92,7 @@ export default function Message(props: TMessageProps) {
     isLast &&
     !isCreatedByUser &&
     (isSubmitting || statusLineState != null || hasActiveToolCall);
+  const showAlignedStatusLine = showActiveStatusLine && !hasParallelContent;
 
   const name = useMemo(() => {
     let result = '';
@@ -162,7 +163,7 @@ export default function Message(props: TMessageProps) {
               baseClasses.common,
               baseClasses.chat,
               'message-render',
-              showActiveStatusLine && 'status-line-active',
+              showAlignedStatusLine && 'status-line-active',
             )}
           >
             {!hasParallelContent && (
