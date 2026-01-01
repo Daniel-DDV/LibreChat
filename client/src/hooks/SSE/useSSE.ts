@@ -17,7 +17,6 @@ import { useGetStartupConfig, useGetUserBalance } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
 import useEventHandlers from './useEventHandlers';
 import store, { type StatusLineState } from '~/store';
-import { formatStatusLineText } from './statusLine';
 
 const clearDraft = (conversationId?: string | null) => {
   if (conversationId) {
@@ -218,13 +217,10 @@ export default function useSSE(
       }
     });
 
-    const statusText = formatStatusLineText(submission.userMessage?.text);
-
     sse.addEventListener('open', () => {
       setAbortScroll(false);
       applyStatusLine({
         key: 'com_ui_generating',
-        text: statusText ?? undefined,
         phase: 'start',
         priority: 2,
         source: 'system',

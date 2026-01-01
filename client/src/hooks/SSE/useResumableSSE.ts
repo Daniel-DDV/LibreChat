@@ -18,7 +18,6 @@ import type { ActiveJobsResponse } from '~/data-provider';
 import { useAuthContext } from '~/hooks/AuthContext';
 import useEventHandlers from './useEventHandlers';
 import store, { type StatusLineState } from '~/store';
-import { formatStatusLineText } from './statusLine';
 
 const clearDraft = (conversationId?: string | null) => {
   if (conversationId) {
@@ -196,8 +195,6 @@ export default function useResumableSSE(
         applyStatusLine(nextStatus);
       };
 
-      const statusText = formatStatusLineText(currentSubmission?.userMessage?.text);
-
       sse.addEventListener('open', () => {
         console.log('[ResumableSSE] Stream connected');
         setAbortScroll(false);
@@ -206,7 +203,6 @@ export default function useResumableSSE(
         setShowStopButton(true);
         applyStatusLine({
           key: 'com_ui_generating',
-          text: statusText ?? undefined,
           phase: 'start',
           priority: 2,
           source: 'system',
