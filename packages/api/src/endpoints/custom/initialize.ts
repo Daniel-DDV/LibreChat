@@ -7,7 +7,12 @@ import {
 } from 'librechat-data-provider';
 import type { TEndpoint } from 'librechat-data-provider';
 import type { AppConfig } from '@librechat/data-schemas';
-import type { BaseInitializeParams, InitializeResultBase, EndpointTokenConfig } from '~/types';
+import type {
+  BaseInitializeParams,
+  InitializeResultBase,
+  EndpointTokenConfig,
+  RequestBody,
+} from '~/types';
 import { getOpenAIConfig } from '~/endpoints/openai/config';
 import { getCustomEndpointConfig } from '~/app/config';
 import { fetchModels } from '~/endpoints/models';
@@ -138,18 +143,27 @@ export async function initializeCustom({
   const requestBody = (req.body ?? {}) as Record<string, unknown>;
   const messageBody = (requestBody.message ?? {}) as Record<string, unknown>;
   const argBody = (requestBody.arg ?? {}) as Record<string, unknown>;
-  const headerBody = {
-    conversationId:
+  const params = req.params as Record<string, unknown> | undefined;
+  const conversationId =
+    getHeaderValue(
       requestBody.conversationId ??
-      messageBody.conversationId ??
-      argBody.conversationId ??
-      req.params?.conversationId ??
-      getHeaderValue(req.headers?.['x-librechat-body-conversationid']) ??
-      getHeaderValue(req.headers?.['x-librechat-conversation-id']) ??
-      getHeaderValue(req.headers?.['x-conversation-id']),
-    parentMessageId:
-      requestBody.parentMessageId ?? messageBody.parentMessageId ?? argBody.parentMessageId,
-    messageId: requestBody.messageId ?? messageBody.messageId ?? argBody.messageId,
+        messageBody.conversationId ??
+        argBody.conversationId ??
+        params?.conversationId,
+    ) ??
+    getHeaderValue(req.headers?.['x-librechat-body-conversationid']) ??
+    getHeaderValue(req.headers?.['x-librechat-conversation-id']) ??
+    getHeaderValue(req.headers?.['x-conversation-id']);
+  const parentMessageId = getHeaderValue(
+    requestBody.parentMessageId ?? messageBody.parentMessageId ?? argBody.parentMessageId,
+  );
+  const messageId = getHeaderValue(
+    requestBody.messageId ?? messageBody.messageId ?? argBody.messageId,
+  );
+  const headerBody: RequestBody = {
+    conversationId,
+    parentMessageId,
+    messageId,
   };
 
   let endpointTokenConfig: EndpointTokenConfig | undefined;
