@@ -155,7 +155,13 @@ server.registerTool(
         .string()
         .optional()
         .describe('Image size (e.g., 1024x1024). Defaults to provider settings.'),
-      n: z.number().int().min(1).max(4).optional().describe('Number of images to generate (1-4).'),
+      n: z
+        .number()
+        .int()
+        .min(1)
+        .max(4)
+        .optional()
+        .describe('Number of images to generate (1-4).'),
       quality: z
         .enum(['standard', 'hd'])
         .optional()
