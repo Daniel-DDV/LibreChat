@@ -1,0 +1,63 @@
+# EduGPT / GovGPT proxy example overlay for LibreChat.
+# Merge this into your librechat.yaml as needed.
+
+endpoints:
+  custom:
+    # EduGPT/GovGPT Proxy Example (v3 only)
+    # Note: On Linux, map host.docker.internal or replace with your host IP.
+    - name: 'EduGPT-Student v3'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3081/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['edugpt-student']
+        fetch: false
+      titleConvo: true
+      titleModel: 'edugpt-student'
+      modelDisplayLabel: 'EduGPT Student (v3)'
+      iconURL: '/assets/EduGPT.png'
+
+    - name: 'EduGPT-Docent v3'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3081/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['edugpt-docent']
+        fetch: false
+      titleConvo: true
+      titleModel: 'edugpt-docent'
+      modelDisplayLabel: 'EduGPT Docent (v3)'
+      iconURL: '/assets/EduGPT.png'
+
+    - name: 'GovGPT v3'
+      apiKey: '${PROXY_API_KEY}'
+      baseURL: 'http://host.docker.internal:3081/v1'
+      headers:
+        X-LibreChat-User-Id: '{{LIBRECHAT_USER_ID}}'
+        X-LibreChat-Conversation-Id: '{{LIBRECHAT_BODY_CONVERSATIONID}}'
+      models:
+        default: ['govgpt']
+        fetch: false
+      titleConvo: true
+      titleModel: 'govgpt'
+      modelDisplayLabel: 'GovGPT (v3)'
+      iconURL: '/assets/GovGPT.png'
+
+modelSpecs:
+  list:
+    - name: "edugpt-student-v3"
+      label: "EduGPT Student (v3)"
+      group: "EduGPT"
+      preset:
+        endpoint: "EduGPT-Student v3"
+        model: "edugpt-student"
+    - name: "edugpt-docent-v3"
+      label: "EduGPT Docent (v3)"
+      group: "EduGPT"
+      preset:
+        endpoint: "EduGPT-Docent v3"
+        model: "edugpt-docent"
